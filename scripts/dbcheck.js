@@ -23,8 +23,6 @@ const args = process.argv.slice(2);
 const useTemp = args.includes('--temp');
 const quiet = args.includes('--quiet');
 
-const config = require('../server/config');
-
 function ok(text) {
   if (!quiet) console.log(`  [ok]   ${text}`);
 }
@@ -36,8 +34,18 @@ console.log('');
 console.log('  Проверка базы данных');
 console.log('  ────────────────────────────────────────────────');
 
+let config = null;
 let tempDir = null;
-let dbFile = config.DB_FILE;
+let dbFile = null;
+try {
+  config = require('../server/config');
+  dbFile = config.DB_FILE;
+} catch (err) {
+  console.log(`  [FAIL] Не удалось определить каталог данных: ${err.message}`);
+  console.log('         Проверьте переменную DATA_DIR в .env и права на каталог data.');
+  console.log('');
+  process.exit(1);
+}
 if (useTemp) {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bogusa-dbcheck-'));
   dbFile = path.join(tempDir, 'check.sqlite');
@@ -110,7 +118,11 @@ try {
   console.log('');
   process.exitCode = 0;
 } catch (err) {
-  fail(err && err.message ? err.message : String(err));
+  const message = err && err.message ? err.message : String(err);
+  message.split('\n').forEach((line, index) => {
+    if (index === 0) fail(line);
+    else console.log(`         ${line}`);
+  });
   console.log('  ────────────────────────────────────────────────');
   console.log('  Проверка не пройдена. Что делать:');
   console.log('');
@@ -124,6 +136,13 @@ try {
   console.log('        "allowScripts": { "better-sqlite3": true, "bcrypt": true }');
   console.log('  Без него npm 12 не запускает install-скрипты и нативные модули');
   console.log('  остаются без бинарников.');
+  console.log('');
+  console.log('  Если сообщение про каталог данных и права — проверьте DATA_DIR и');
+  console.log('  доступность папки data (проще всего распаковать проект в свою папку).');
+  console.log('');
+  console.log('  Если готовый бинарник не скачивается (ошибки сети, прокси или');
+  console.log('  сертификата при обращении к github.com) — повторите установку из');
+  console.log('  другой сети: это единственное, что нужно для нативного драйвера.');
   console.log('');
   console.log('  Диагностика окружения целиком:  npm run doctor');
   console.log('');

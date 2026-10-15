@@ -183,6 +183,26 @@ if (-not $SkipInstall) {
             exit 1
         }
         Write-Ok 'Зависимости установлены.'
+
+        # Нативный драйвер базы данных: npm 11.19+ и 12 запускают install-скрипты
+        # только у пакетов из allowScripts, поэтому проверяем бинарник отдельно
+        # и при необходимости доустанавливаем драйвер ещё раз явно.
+        $driverBinary = Join-Path $root 'node_modules\better-sqlite3\build\Release\better_sqlite3.node'
+        if (-not (Test-Path $driverBinary)) {
+            Write-Note 'Готовый бинарник драйвера базы данных не установился — ставлю его отдельно.'
+            & npm install better-sqlite3@^12 --no-audit --no-fund
+            if (Test-Path $driverBinary) {
+                Write-Ok 'Драйвер базы данных (better-sqlite3) установлен.'
+            } else {
+                Write-Note 'Скачать готовый бинарник не удалось: он берётся с github.com.'
+                Write-Note 'Если сеть ограничена прокси или антивирусом — повторите в другой сети:'
+                Write-Note '   npm install better-sqlite3@^12'
+                Write-Note 'Работа без него возможна, но на Node.js 24 встроенный SQLite может падать —'
+                Write-Note 'см. подсказки ниже и npm run doctor.'
+            }
+        } else {
+            Write-Ok 'Драйвер базы данных (better-sqlite3) на месте.'
+        }
     }
 }
 
