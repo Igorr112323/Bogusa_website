@@ -67,12 +67,35 @@ function clearAuthCookie(res) {
   res.clearCookie(config.COOKIE_NAME, cookieOptions());
 }
 
-/** Достаёт токен из cookie или заголовка Authorization. */
-function extractToken(req) {
+/**
+ * Все возможные токены запроса: сначала httpOnly-cookie, затем заголовок Bearer.
+ * Порядок важен: cookie — основной механизм, Bearer используется клиентами панелей
+ * (например, когда браузер блокирует сторонние cookie внутри iframe).
+ */
+function extractTokens(req) {
+  const tokens = [];
   const cookieToken = req.cookies ? req.cookies[config.COOKIE_NAME] : null;
-  if (cookieToken) return cookieToken;
+  if (cookieToken) tokens.push(cookieToken);
   const header = req.headers.authorization || '';
-  if (header.startsWith('Bearer ')) return header.slice(7).trim();
+  if (header.startsWith('Bearer ')) {
+    const value = header.slice(7).trim();
+    if (value && !tokens.includes(value)) tokens.push(value);
+  }
+  return tokens;
+}
+
+/** Первый валидный токен запроса или null. */
+function extractToken(req) {
+  const tokens = extractTokens(req);
+  if (tokens.length === 0) return null;
+  for (const token of tokens) {
+    try {
+      const payload = verifyToken(token);
+      return { token, payload };
+    } catch {
+      /* пробуем следующий токен */
+    }
+  }
   return null;
 }
 
@@ -89,13 +112,11 @@ function loadUserById(id) {
  * иначе запрос продолжается анонимным (для публичных эндпоинтов).
  */
 function attachUser(req, _res, next) {
-  const token = extractToken(req);
   req.user = null;
-  if (!token) return next();
-  try {
-    const payload = verifyToken(token);
-    const user = loadUserById(payload.sub);
-    if (user && user.is_active && Number(user.token_version) === Number(payload.tv)) {
+  const found = extractToken(req);
+  if (found) {
+    const user = loadUserById(found.payload.sub);
+    if (user && user.is_active && Number(user.token_version) === Number(found.payload.tv)) {
       req.user = {
         id: user.id,
         login: user.login,
@@ -104,8 +125,6 @@ function attachUser(req, _res, next) {
         must_change_password: !!user.must_change_password,
       };
     }
-  } catch {
-    req.user = null;
   }
   return next();
 }

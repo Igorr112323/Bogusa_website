@@ -457,6 +457,45 @@ test('журнал аудита содержит действия админис
   assert.ok(!JSON.stringify(audit.json).includes('Admin#2026pass'), 'пароли не попадают в журнал');
 });
 
+test('сессия работает по Bearer-токену, если cookie недоступна (iframe, блокировка 3rd-party cookie)', async () => {
+  const raw = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: 'petrov', password: 'Noviy#Parol2026' }),
+  });
+  const { token } = await raw.json();
+  assert.ok(token, 'токен возвращается в ответе на вход');
+
+  // Браузер заблокировал cookie — работаем только по заголовку Authorization
+  const withoutCookie = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(withoutCookie.status, 200);
+
+  const overview = await fetch(`${baseUrl}/api/teacher/overview`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(overview.status, 200);
+
+  // Битая cookie не должна ломать валидный токен
+  const staleCookie = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { Cookie: 'bf_token=broken.token.value', Authorization: `Bearer ${token}` },
+  });
+  assert.equal(staleCookie.status, 200);
+
+  // Валидная cookie имеет приоритет, даже если рядом мусорный Bearer
+  const mixed = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { Cookie: `bf_token=${token}`, Authorization: 'Bearer broken.token.value' },
+  });
+  assert.equal(mixed.status, 200);
+
+  // Полностью неверные данные — доступа нет
+  const denied = await fetch(`${baseUrl}/api/teacher/overview`, {
+    headers: { Authorization: 'Bearer broken.token.value' },
+  });
+  assert.equal(denied.status, 401);
+});
+
 test('выход из системы очищает cookie', async () => {
   const client = makeClient();
   await client.post('/api/auth/login', { login: 'admin', password: 'Admin#2026pass' });
