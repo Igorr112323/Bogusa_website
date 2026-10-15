@@ -20,6 +20,8 @@ import {
   copyText,
   loadToken,
   clearToken,
+  loadStudentBase,
+  studentUrl,
 } from './api.js';
 import { distributionBars, timelineChart, positiveBar } from './charts.js';
 
@@ -38,10 +40,10 @@ const userBadge = document.querySelector('#user-badge');
 const sidebarNote = document.querySelector('#sidebar-note');
 
 const VIEWS = [
-  { key: 'overview', label: 'Обзор', icon: '📊' },
-  { key: 'report', label: 'Отчёт по дисциплине', icon: '📄' },
-  { key: 'comments', label: 'Отзывы студентов', icon: '💬' },
-  { key: 'password', label: 'Пароль', icon: '🔒' },
+  { key: 'overview', label: 'Обзор' },
+  { key: 'report', label: 'Отчёт по дисциплине' },
+  { key: 'comments', label: 'Отзывы студентов' },
+  { key: 'password', label: 'Пароль' },
 ];
 
 /* ------------------------------ каркас ------------------------------ */
@@ -62,7 +64,7 @@ function renderNav() {
         attrs: { type: 'button', 'aria-current': state.view === view.key ? 'true' : 'false' },
         on: { click: () => go(view.key) },
       },
-      [el('span', { class: 'nav-ico', text: view.icon, attrs: { 'aria-hidden': 'true' } }), view.label]
+      view.label
     );
 
   mount(sideNav, VIEWS.map(make));
@@ -409,10 +411,11 @@ async function renderReport() {
         ])
       );
 
-      const commentGroups = form.comments.map((group) =>
+      const commentGroups = [...form.comments, ...(form.archived_comments || [])].map((group) =>
         el('div', { class: 'comment-group card' }, [
           el('h3', {}, [
             el('span', { text: group.label }),
+            group.legacy ? el('span', { class: 'badge', text: 'вопрос снят с анкеты' }) : null,
             el('span', { class: 'badge badge-brand', text: String(group.items.length) }),
           ]),
           ...group.items.map((item) =>
@@ -549,12 +552,11 @@ async function renderReport() {
 
 /** Карточка со ссылкой на анкету и QR-кодом (удобно показать группе с экрана). */
 function linksCard() {
-  const disciplineId = state.filters.disciplineId;
-  const params = new URLSearchParams();
-  if (disciplineId) params.set('discipline', String(disciplineId));
-  if (state.filters.topicId) params.set('topic', String(state.filters.topicId));
-  if (state.filters.formType) params.set('form', state.filters.formType);
-  const url = `${window.location.origin}/form.html${params.toString() ? `?${params}` : ''}`;
+  const url = studentUrl('/form.html', {
+    discipline: state.filters.disciplineId,
+    topic: state.filters.topicId,
+    form: state.filters.formType,
+  });
 
   const input = el('input', { class: 'input', attrs: { value: url, readonly: true, 'aria-label': 'Ссылка на анкету' } });
   return el('div', { class: 'card' }, [
@@ -606,7 +608,6 @@ async function renderComments() {
       if (data.comments.length === 0) {
         mount(listNode, [
           el('div', { class: 'card empty' }, [
-            el('div', { class: 'empty-mark', text: '💬', attrs: { 'aria-hidden': 'true' } }),
             el('p', { text: 'Комментариев пока нет. Студенты чаще пишут их в конце семестра.' }),
           ]),
         ]);
@@ -731,6 +732,11 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 
 (async function boot() {
   loadToken();
+  // Ссылка на студенческий сайт ведёт на студенческий порт, а не на адрес панели.
+  loadStudentBase().then(() => {
+    const studentsLink = document.querySelector('#students-link');
+    if (studentsLink) studentsLink.href = studentUrl('/');
+  });
   try {
     const { user } = await api.get('/api/auth/me');
     if (!user) throw new Error('not authenticated');

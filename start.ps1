@@ -10,9 +10,10 @@
       2. устанавливает зависимости (npm install), если каталога node_modules нет;
       3. создаёт файл настроек .env из .env.example, если его нет;
       3. проверяет, что драйвер базы данных работает (npm run dbcheck);
-      4. создаёт базу данных с администратором и демонстрационными данными
-         (только при первом запуске — существующая база не трогается);
-      5. запускает сервер и печатает адреса всех ролей.
+      4. создаёт базу данных с администратором, преподавателем, дисциплинами
+         и темами (только при первом запуске — существующая база не трогается);
+      5. запускает сервер и печатает адреса: отдельно для студентов и отдельно
+         для преподавателя и администратора.
 
 .EXAMPLE
     .\start.ps1
@@ -23,8 +24,8 @@
     Если Node.js нет: установить его через winget без дополнительных вопросов.
 
 .EXAMPLE
-    .\start.ps1 -Port 8080
-    Запустить на другом порту.
+    .\start.ps1 -Port 8080 -StaffPort 8081
+    Запустить на других портах: 8080 для студентов, 8081 для преподавателя и администратора.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\start.ps1
@@ -33,7 +34,8 @@
 
 [CmdletBinding()]
 param(
-    [int]$Port = 0,          # 0 = взять порт из .env или 3000
+    [int]$Port = 0,          # 0 = взять порт студентов из .env или 3000
+    [int]$StaffPort = 0,     # 0 = взять порт преподавателя и админа из .env или 3001
     [switch]$InstallNode,    # установить Node.js через winget без вопросов
     [switch]$NoDemo,         # не загружать демонстрационные данные
     [switch]$SkipInstall,    # пропустить npm install
@@ -211,9 +213,11 @@ $envPath = Join-Path $root '.env'
 if (-not (Test-Path $envPath)) {
     Write-Step 'Создаю файл настроек .env'
     Copy-Item (Join-Path $root '.env.example') $envPath
-    Write-Ok 'Файл .env создан из .env.example (логин администратора по умолчанию: admin)'
-    Write-Note 'Если меняете пароль в .env и в нём есть # или ; — берите значение в кавычки:'
-    Write-Note 'ADMIN_PASSWORD="Admin#2026pass"  (иначе пароль обрежется)'
+    Write-Ok 'Файл .env создан из .env.example'
+    Write-Note 'Учётные записи из .env: администратор admin и преподаватель ivanova.'
+    Write-Note 'Пароли заданы там же (ADMIN_PASSWORD и DEMO_TEACHER_PASSWORD) — для'
+    Write-Note 'работы вне сети их лучше заменить на свои. Если в пароле есть # или ;,'
+    Write-Note 'значение берите в кавычки: ADMIN_PASSWORD="Admin#2026pass".'
 } else {
     Write-Step 'Файл настроек .env уже существует (оставляю без изменений)'
 }
@@ -252,46 +256,71 @@ if ($Reset) {
 }
 
 if (-not (Test-Path $dbFile)) {
-    Write-Step 'Инициализирую базу данных и создаю администратора'
+    Write-Step 'Инициализирую базу данных'
     if ($NoDemo) {
         & npm run seed
     } else {
         & npm run seed -- --demo
     }
     if ($LASTEXITCODE -ne 0) { Fail 'Не удалось создать базу данных. Смотрите сообщение выше.' }
-    Write-Note 'Пароль администратора напечатан выше — сохраните его.'
+    Write-Note 'Выше напечатаны логин и пароль администратора и демо-преподавателя — сохраните их.'
+    Write-Note 'Без -NoDemo создаются дисциплины «Информатика», «Программирование», «Базы данных»'
+    Write-Note 'с темами занятий и примерами анонимных ответов: отчёты и выгрузки не будут пустыми.'
 } else {
     Write-Step 'База данных уже есть (данные сохранены)'
     Write-Ok "Файл: $dbFile"
+    Write-Note 'Добавить дисциплины, темы и примеры ответов:  npm run seed -- --demo'
+    Write-Note 'Сбросить всё и создать базу заново:          .\start.ps1 -Reset'
 }
 
 # --- 5. Запуск -------------------------------------------------------------
-if ($Port -gt 0) { $env:PORT = "$Port" }
 
-# Если порт не задан параметром — берём его из .env, иначе 3000
-$effectivePort = '3000'
-if (-not $env:PORT) {
+function Read-EnvFileValue([string]$name, [string]$fallback) {
+    <# Значение из .env; если его там нет — fallback. #>
     if (Test-Path $envPath) {
         foreach ($line in Get-Content $envPath) {
-            if ($line -match '^\s*PORT\s*=\s*(.+)$') {
-                $effectivePort = $Matches[1].Trim().Trim('"').Trim("'")
-                break
+            if ($line -match "^\s*$name\s*=\s*(.*)$") {
+                $value = $Matches[1].Trim().Trim('"').Trim("'")
+                if ($value) { return $value }
             }
         }
     }
-    if (-not $effectivePort) { $effectivePort = '3000' }
-    $env:PORT = $effectivePort
-} else {
-    $effectivePort = $env:PORT
+    return $fallback
 }
 
-$base = "http://localhost:$effectivePort"
+if ($Port -gt 0) { $env:PORT = "$Port" }
+if ($StaffPort -gt 0) { $env:STAFF_PORT = "$StaffPort" }
+if (-not $env:PORT) { $env:PORT = Read-EnvFileValue 'PORT' '3000' }
+if (-not $env:STAFF_PORT) { $env:STAFF_PORT = Read-EnvFileValue 'STAFF_PORT' '3001' }
+
+$studentPort = $env:PORT
+$staffPort = $env:STAFF_PORT
+
+if ($studentPort -eq $staffPort) {
+    Fail 'PORT и STAFF_PORT совпадают. Сайт студентов и вход для преподавателей должны работать на разных портах (например, 3000 и 3001).'
+}
+
+$studentBase = "http://localhost:$studentPort"
+$staffBase = "http://localhost:$staffPort"
+
 Write-Host ''
-Write-Host '  Адреса для проверки:' -ForegroundColor White
-Write-Host "    Студенты:       $base/            (и $base/form.html)"
-Write-Host "    Вход:           $base/login"
-Write-Host "    Преподаватель:  $base/portal/"
-Write-Host "    Админ:          $base/admin/"
+Write-Host '  Адреса после запуска:' -ForegroundColor White
+Write-Host ''
+Write-Host '  Студенты (без входа, порт ' -NoNewline
+Write-Host "$studentPort" -NoNewline -ForegroundColor Cyan
+Write-Host '):'
+Write-Host "    Список дисциплин:      $studentBase/"
+Write-Host "    Анкета:                $studentBase/form.html"
+Write-Host ''
+Write-Host '  Преподаватель и администратор (порт ' -NoNewline
+Write-Host "$staffPort" -NoNewline -ForegroundColor Cyan
+Write-Host '):'
+Write-Host "    Вход:                  $staffBase/login"
+Write-Host "    Портал преподавателя:  $staffBase/portal/"
+Write-Host "    Админ-панель:          $staffBase/admin/"
+Write-Host ''
+Write-Host "  Ссылки и QR-коды для студентов всегда ведут на $studentBase" -ForegroundColor DarkGray
+Write-Host '  На студенческом порту вход, портал и админ-панель не работают (404).' -ForegroundColor DarkGray
 Write-Host ''
 Write-Host '  Остановить сервер: Ctrl+C в этом окне' -ForegroundColor DarkGray
 Write-Host '  Проверка окружения: npm run doctor | Шпаргалка: npm run help' -ForegroundColor DarkGray

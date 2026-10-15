@@ -24,13 +24,18 @@ process.env.RATE_LIMIT_LOGIN_WINDOW_MIN = '15';
 process.env.RATE_LIMIT_API = '100000';
 process.env.NODE_ENV = 'test';
 
-const app = require('../server/app');
+const createApp = require('../server/app');
 const { db, run, nowIso } = require('../server/db');
+const { getScaleQuestions } = require('../server/questions');
 
-let server;
-let baseUrl;
+let studentServer;
+let staffServer;
+let studentUrl;
+let staffUrl;
 
-const scores = { l_goals: 5, l_logic: 5, l_visual: 4, l_atmosphere: 5, l_pace: 4, l_org: 5 };
+// Оценки по всем пунктам анкеты — состав берётся из определений вопросов.
+const scores = {};
+for (const q of getScaleQuestions('lesson')) scores[q.key] = 5;
 
 test.before(async () => {
   const now = nowIso();
@@ -46,13 +51,18 @@ test.before(async () => {
     now
   );
 
-  server = app.listen(0, '127.0.0.1');
-  await new Promise((resolve) => server.once('listening', resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  studentServer = createApp('student').listen(0, '127.0.0.1');
+  await new Promise((resolve) => studentServer.once('listening', resolve));
+  studentUrl = `http://127.0.0.1:${studentServer.address().port}`;
+
+  staffServer = createApp('staff').listen(0, '127.0.0.1');
+  await new Promise((resolve) => staffServer.once('listening', resolve));
+  staffUrl = `http://127.0.0.1:${staffServer.address().port}`;
 });
 
 test.after(() => {
-  server.close();
+  studentServer.close();
+  staffServer.close();
   db.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -68,7 +78,7 @@ const payload = () => ({
 test('после лимита отправок сервер отвечает 429', async () => {
   const statuses = [];
   for (let i = 0; i < 5; i += 1) {
-    const res = await fetch(`${baseUrl}/api/responses`, {
+    const res = await fetch(`${studentUrl}/api/responses`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload()),
@@ -86,7 +96,7 @@ test('после лимита отправок сервер отвечает 429
 test('перебор паролей также ограничен', async () => {
   const statuses = [];
   for (let i = 0; i < 5; i += 1) {
-    const res = await fetch(`${baseUrl}/api/auth/login`, {
+    const res = await fetch(`${staffUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login: 'admin', password: `wrong-${i}` }),

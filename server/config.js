@@ -68,7 +68,10 @@ const config = {
   PUBLIC_DIR: path.join(ROOT_DIR, 'public'),
 
   HOST: process.env.HOST || '0.0.0.0',
+  /** Порт для студентов: анкета и каталог дисциплин. */
   PORT: toInt(process.env.PORT, 3000),
+  /** Порт для преподавателя и администратора: вход, портал, админ-панель. */
+  STAFF_PORT: toInt(process.env.STAFF_PORT, 3001),
 
   /** Сколько доверенных прокси перед приложением (для корректного IP в rate-limit). */
   TRUST_PROXY_HOPS: toInt(process.env.TRUST_PROXY_HOPS, 1),
@@ -117,5 +120,31 @@ const config = {
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || '',
   ADMIN_NAME: process.env.ADMIN_NAME || 'Администратор',
 };
+
+if (config.STAFF_PORT === config.PORT) {
+  throw new Error(
+    'PORT и STAFF_PORT совпадают: студенческий сайт и вход для преподавателей ' +
+      'должны работать на разных портах (например, 3000 и 3001).'
+  );
+}
+
+/**
+ * Адрес студенческого сайта. Ссылки и QR-коды для студентов всегда строятся от
+ * студенческого порта, даже если их показывает панель на STAFF_PORT.
+ *
+ * @param {object} [req] запрос Express — из него берётся имя хоста
+ * @returns {string} например, http://localhost:3000
+ */
+function studentBaseUrl(req) {
+  if (config.PUBLIC_BASE_URL) return config.PUBLIC_BASE_URL;
+  let host = 'localhost';
+  if (req) {
+    const fromRequest = req.hostname || (req.headers && req.headers.host ? String(req.headers.host).split(':')[0] : '');
+    if (fromRequest) host = fromRequest;
+  }
+  return `http://${host}:${config.PORT}`;
+}
+
+config.studentBaseUrl = studentBaseUrl;
 
 module.exports = config;

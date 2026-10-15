@@ -4,20 +4,20 @@
    ============================================================ */
 
 :root {
-  --brand-50: #eef2ff;
-  --brand-100: #e0e7ff;
-  --brand-200: #c7d2fe;
-  --brand-400: #818cf8;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --brand-700: #4338ca;
-  --accent-500: #0d9488;
-  --accent-600: #0f766e;
+  --brand-50: #eef2f7;
+  --brand-100: #dce4ee;
+  --brand-200: #b9c8da;
+  --brand-400: #6d89a8;
+  --brand-500: #3f6288;
+  --brand-600: #2f4f70;
+  --brand-700: #26405b;
+  --accent-500: #3f7a6f;
+  --accent-600: #356a60;
 
-  --bg: #f6f7fb;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f1f3f9;
-  --border: #e3e6ef;
+  --surface-2: #eef0f4;
+  --border: #d8dce3;
   --text: #171c2c;
   --text-soft: #4c5468;
   --text-muted: #6b7280;
@@ -29,13 +29,13 @@
   --danger: #b91c1c;
   --danger-bg: #fee2e2;
 
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
-  --shadow: 0 4px 16px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 18px 40px rgba(23, 28, 44, 0.16);
-  --focus: 0 0 0 3px rgba(99, 102, 241, 0.35);
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 2px 8px rgba(16, 24, 40, 0.07);
+  --shadow-lg: 0 10px 24px rgba(23, 28, 44, 0.14);
+  --focus: 0 0 0 3px rgba(63, 98, 136, 0.35);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -59,8 +59,8 @@
     --text: #eef1f7;
     --text-soft: #c2c9d8;
     --text-muted: #98a1b3;
-    --brand-50: #1e2440;
-    --brand-100: #242c4d;
+    --brand-50: #1b2430;
+    --brand-100: #22303f;
     --ok-bg: #10301f;
     --warn-bg: #3a2a08;
     --danger-bg: #3b1315;
@@ -73,6 +73,11 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Атрибут hidden важнее любых классов — иначе .btn/.field его переопределяют */
+[hidden] {
+  display: none !important;
 }
 
 html {
@@ -344,7 +349,7 @@ a:hover {
   --btn-bg: var(--brand-600);
   --btn-fg: #fff;
   --btn-border: var(--brand-600);
-  box-shadow: 0 2px 10px rgba(79, 70, 229, 0.28);
+  box-shadow: 0 2px 10px rgba(47, 79, 112, 0.25);
 }
 
 .btn-accent {
@@ -741,7 +746,7 @@ a:hover {
   background: var(--brand-600);
   border-color: var(--brand-600);
   color: #fff;
-  box-shadow: 0 2px 10px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 10px rgba(47, 79, 112, 0.28);
 }
 
 .scale input:checked + label .scale-word {
@@ -925,4 +930,41 @@ a:hover {
     border-color: #ccc;
     break-inside: avoid;
   }
+}
+
+/* ---------------------------- Анкета студента ---------------------------- */
+
+.survey-section {
+  margin-top: var(--space-5);
+}
+
+.survey-section > h2 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin-bottom: 0;
+}
+
+.survey-section .question:first-of-type {
+  border-top: none;
+}
+
+#survey form > .btn {
+  margin-top: var(--space-5);
+}
+
+#form-title {
+  font-size: 1.45rem;
+}
+
+#form-subtitle {
+  color: var(--text-soft);
+}
+
+#picker {
+  margin-top: var(--space-4);
+}
+
+#picker .field:last-of-type {
+  margin-bottom: 0;
 }

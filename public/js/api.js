@@ -108,6 +108,39 @@ export const api = {
   del: (url, options) => request('DELETE', url, undefined, options),
 };
 
+/* --------------------- Адрес студенческого сайта --------------------- */
+
+/**
+ * Сайт студентов работает на своём порту (PORT), а панели преподавателя и
+ * администратора — на STAFF_PORT. Ссылки и QR-коды для студентов всегда
+ * строятся от студенческого адреса: его сообщает сервер в /api/meta.
+ */
+let studentBase = '';
+
+export async function loadStudentBase() {
+  try {
+    const meta = await api.get('/api/meta');
+    studentBase = String(meta.student_base_url || '').replace(/\/+$/, '');
+  } catch {
+    studentBase = '';
+  }
+  return studentBase;
+}
+
+export function getStudentBase() {
+  return studentBase || window.location.origin;
+}
+
+export function studentUrl(path = '/', params = null) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value === null || value === undefined || value === '') continue;
+    search.set(key, String(value));
+  }
+  const query = search.toString();
+  return `${getStudentBase()}${path}${query ? `?${query}` : ''}`;
+}
+
 /* ------------------------------ DOM-хелперы ------------------------------ */
 
 /**
@@ -372,9 +405,9 @@ export function confirmDialog({ title, message, confirmLabel = 'Подтверд
 }
 
 export const COLORS = {
-  brand: '#6366f1',
-  brandDark: '#4f46e5',
-  accent: '#0d9488',
+  brand: '#3f6288',
+  brandDark: '#2f4f70',
+  accent: '#3f7a6f',
   muted: '#94a3b8',
   ok: '#17803d',
   warn: '#b45309',

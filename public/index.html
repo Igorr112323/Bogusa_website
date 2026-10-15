@@ -3,128 +3,34 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="theme-color" content="#2f4f70" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Анонимная обратная связь · Главная</title>
+    <title>Анкеты по занятиям и дисциплинам</title>
     <meta
       name="description"
-      content="Анонимная обратная связь от студентов: оценка занятия и итоговая оценка дисциплины. Без ФИО, группы и регистрации."
+      content="Анонимные анкеты студентов: оценка проведенного занятия и итоговая оценка дисциплины."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/css/styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#catalog">К списку дисциплин</a>
+    <main class="container container-narrow">
+      <h1>Анкеты по занятиям и дисциплинам</h1>
+      <p>
+        Выберите дисциплину и заполните анкету. Опрос анонимный: фамилия, номер группы и другие
+        сведения о студенте не запрашиваются и не сохраняются.
+      </p>
 
-    <header class="site-header">
-      <div class="container">
-        <a class="brand" href="/">
-          <span class="brand-mark" aria-hidden="true">✦</span>
-          <span>
-            Анонимная обратная связь
-            <small>оценка занятий и дисциплин</small>
-          </span>
-        </a>
-        <span class="nav-spacer"></span>
-        <nav class="nav-links" aria-label="Навигация">
-          <a class="btn btn-sm btn-ghost" href="/form.html">Заполнить анкету</a>
-          <a class="btn btn-sm" href="/login">Вход для преподавателя</a>
-        </nav>
+      <div class="card">
+        <div class="field">
+          <label class="label" for="discipline-select">Дисциплина</label>
+          <select class="select" id="discipline-select"></select>
+        </div>
+        <a class="btn btn-primary btn-block" id="open-form" href="/form.html">Перейти к анкете</a>
       </div>
-    </header>
 
-    <main class="container">
-      <section class="section">
-        <div class="card card-hero">
-          <span class="badge badge-brand">Анонимно · без регистрации</span>
-          <h1>Помогите улучшить преподавание</h1>
-          <p>
-            Выберите дисциплину и тему, оцените занятие или курс по шкале от 1 до 5 и напишите
-            замечания и пожелания. Преподаватель увидит только обобщённые оценки и текст —
-            без имён, групп и других данных о вас.
-          </p>
-          <div class="btn-row">
-            <a class="btn btn-primary btn-lg" href="/form.html">Перейти к анкете</a>
-            <a class="btn btn-ghost btn-lg" href="#how">Как это работает</a>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="how">
-        <div class="section-title">
-          <h2>Как это работает</h2>
-          <span class="badge badge-brand">3 шага · 2–3 минуты</span>
-        </div>
-        <div class="grid grid-3">
-          <div class="card">
-            <h3>1. Выберите дисциплину</h3>
-            <p class="soft small">Список открытых дисциплин виден без входа в систему.</p>
-          </div>
-          <div class="card">
-            <h3>2. Выберите тему и анкету</h3>
-            <p class="soft small">
-              «Анкета по занятию» — про конкретное занятие, «Итоговая» — про дисциплину и работу
-              преподавателя в целом.
-            </p>
-          </div>
-          <div class="card">
-            <h3>3. Отправьте анонимно</h3>
-            <p class="soft small">
-              Сервер сохраняет только оценки, текст и дату. Связь с вами установить невозможно.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" id="catalog">
-        <div class="section-title">
-          <h2>Открытые дисциплины</h2>
-          <span class="small muted" id="catalog-count"></span>
-        </div>
-
-        <div class="card card-tight">
-          <label class="label" for="catalog-search">Поиск дисциплины</label>
-          <input
-            class="input"
-            id="catalog-search"
-            type="search"
-            placeholder="Название или код, например «математика»"
-            autocomplete="off"
-          />
-          <p class="hint">Поиск работает по названию и коду дисциплины.</p>
-        </div>
-
-        <div class="mt" id="catalog-status"></div>
-        <div class="card-list" id="catalog-list"></div>
-      </section>
-
-      <section class="section">
-        <div class="grid grid-2">
-          <div class="card">
-            <h3>Что сохраняется в базе</h3>
-            <ul class="privacy-list" id="privacy-collects"></ul>
-          </div>
-          <div class="card">
-            <h3>Что не собирается никогда</h3>
-            <ul class="privacy-list danger" id="privacy-not"></ul>
-          </div>
-        </div>
-        <p class="small muted" id="privacy-note"></p>
-      </section>
+      <div id="status"></div>
     </main>
-
-    <footer class="site-footer">
-      <div class="container">
-        <p>
-          Сервис анонимной обратной связи. Данные студентов не собираются: IP-адрес используется
-          только для ограничения частоты запросов и не сохраняется в базе.
-        </p>
-        <p class="tiny">
-          Преподавателям и администраторам — <a href="/login">вход в панель</a>.
-        </p>
-      </div>
-    </footer>
 
     <script type="module" src="/js/landing.js"></script>
   </body>

@@ -6,7 +6,9 @@
  *  2. во фронтенде нет innerHTML / document.write / eval (защита от XSS);
  *  3. студенческие скрипты не пишут ничего в localStorage/sessionStorage;
  *  4. API отдаёт поля, которые использует интерфейс;
- *  5. CSP-совместимость: в HTML нет inline-скриптов и обработчиков on*.
+ *  5. CSP-совместимость: в HTML нет inline-скриптов и обработчиков on*;
+ *  6. студенческие страницы: только выпадающие списки, без эмодзи и без
+ *     упоминаний входа, портала и админ-панели.
  */
 
 const test = require('node:test');
@@ -117,19 +119,29 @@ process.env.JWT_SECRET = 'contract-secret-contract-secret-1234';
 process.env.ADMIN_PASSWORD = 'Admin#2026pass';
 process.env.ANTI_BOT_MIN_FILL_MS = '0';
 
-const app = require('../server/app');
+const createApp = require('../server/app');
 const { ensureAdminAccount, seedDemoStructure, seedDemoResponses } = require('../server/seed');
 const { db } = require('../server/db');
 
-let server;
-let baseUrl;
+let studentServer;
+let staffServer;
+let studentUrl;
+let staffUrl;
 let cookie = '';
+
+/** Разделы, которые живут только на порту преподавателя и администратора. */
+const STAFF_PREFIXES = ['/api/auth', '/api/teacher', '/api/admin', '/login', '/portal', '/admin'];
+
+function baseFor(url) {
+  const clean = url.split('?')[0].replace(/\/+$/, '') || '/';
+  return STAFF_PREFIXES.some((p) => clean === p || clean.startsWith(`${p}/`)) ? staffUrl : studentUrl;
+}
 
 async function call(method, url, body) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (cookie) headers.Cookie = cookie;
-  const res = await fetch(`${baseUrl}${url}`, {
+  const res = await fetch(`${baseFor(url)}${url}`, {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -149,15 +161,22 @@ async function call(method, url, body) {
 test.before(async () => {
   ensureAdminAccount();
   const structure = seedDemoStructure();
-  seedDemoResponses({ count: 6 });
+  seedDemoResponses({ count: 12 });
   assert.ok(structure.discipline, 'демо-дисциплина создана');
-  server = app.listen(0, '127.0.0.1');
-  await new Promise((resolve) => server.once('listening', resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  assert.ok(structure.disciplines.length >= 3, 'для проверки отчётов нужно несколько дисциплин');
+
+  studentServer = createApp('student').listen(0, '127.0.0.1');
+  await new Promise((resolve) => studentServer.once('listening', resolve));
+  studentUrl = `http://127.0.0.1:${studentServer.address().port}`;
+
+  staffServer = createApp('staff').listen(0, '127.0.0.1');
+  await new Promise((resolve) => staffServer.once('listening', resolve));
+  staffUrl = `http://127.0.0.1:${staffServer.address().port}`;
 });
 
 test.after(() => {
-  server.close();
+  studentServer.close();
+  staffServer.close();
   db.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -173,7 +192,7 @@ test('GET /api/meta отдаёт формы с полями, которые ис
   }
 });
 
-test('структура анкеты содержит scale_words — их рисует student.js', async () => {
+test('структура анкеты содержит scale_words — их рисует form.js', async () => {
   const res = await call('GET', '/api/forms/lesson');
   assert.equal(res.status, 200);
   assert.ok(res.json.scale_words, 'нужны короткие подписи шкалы');
@@ -217,6 +236,11 @@ test('портал преподавателя получает все нужны
   assert.ok(Array.isArray(overview.json.disciplines));
   assert.ok(overview.json.disciplines.every((d) => 'responses' in d && 'avg' in d && 'topics_count' in d));
   assert.ok(typeof overview.json.min_answers_label === 'string');
+  const { first_response_at: firstAt, last_response_at: lastAt } = overview.json.totals;
+  assert.ok(
+    !firstAt || !lastAt || firstAt <= lastAt,
+    'первый ответ не может быть позже последнего'
+  );
 
   const disciplineId = overview.json.disciplines[0].id;
   const report = await call('GET', `/api/teacher/disciplines/${disciplineId}/report`);
@@ -294,6 +318,30 @@ test('страницы отдаются сервером и содержат п�
   }
 });
 
+test('в студенческих страницах нет эмодзи, пояснений и служебных блоков', async () => {
+  const emoji = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{2726}]/u;
+  const files = ['public/index.html', 'public/form.html', 'public/404.html', 'public/js/landing.js', 'public/js/form.js'];
+  for (const file of files) {
+    const source = read(file);
+    assert.ok(!emoji.test(source), `в ${file} не должно быть эмодзи и декоративных символов`);
+    assert.ok(!/Например:/i.test(source), `в ${file} не должно быть подсказок-примеров`);
+    assert.ok(!source.includes('badge'), `в ${file} не должно быть бейджей`);
+  }
+});
+
+test('студент выбирает дисциплину и тему только из выпадающих списков', async () => {
+  const form = await call('GET', '/form.html');
+  assert.equal(form.status, 200);
+  assert.ok(form.text.includes('<select'), 'на странице анкеты есть выпадающие списки');
+  assert.ok(form.text.includes('id="discipline-select"'), 'есть список дисциплин');
+  assert.ok(form.text.includes('id="topic-select"'), 'есть список тем занятия');
+  assert.ok(!/<input(?![^>]*type="hidden")[^>]*type="(text|search)"/i.test(form.text), 'ручного ввода нет');
+
+  const landing = await call('GET', '/');
+  assert.ok(landing.text.includes('id="discipline-select"'), 'на главной также только список дисциплин');
+  assert.ok(!landing.text.includes('type="search"'), 'поиска с ручным вводом на главной нет');
+});
+
 test('неизвестный адрес API отвечает JSON-ошибкой, а не HTML', async () => {
   const res = await call('GET', '/api/unknown-endpoint');
   assert.equal(res.status, 404);
@@ -301,7 +349,7 @@ test('неизвестный адрес API отвечает JSON-ошибкой
 });
 
 test('заголовки безопасности выставлены, iframe разрешён политикой CSP', async () => {
-  const res = await fetch(`${baseUrl}/`);
+  const res = await fetch(`${studentUrl}/`);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(res.headers.get('x-frame-options'), null, 'X-Frame-Options не должен ломать встраивание');
   const csp = res.headers.get('content-security-policy');

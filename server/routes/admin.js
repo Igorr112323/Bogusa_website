@@ -647,9 +647,9 @@ router.get('/export.csv', (req, res, next) => {
   }
 });
 
-/** Ссылка для студентов (её же кодируем в QR). */
+/** Ссылка для студентов (её же кодируем в QR). Всегда ведёт на студенческий порт. */
 function buildStudentUrl(req, { disciplineId = null, topicId = null, formType = null } = {}) {
-  const base = config.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const base = config.studentBaseUrl(req);
   const url = new URL('/form.html', `${base}/`);
   if (disciplineId) url.searchParams.set('discipline', String(disciplineId));
   if (topicId) url.searchParams.set('topic', String(topicId));

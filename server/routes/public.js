@@ -20,14 +20,15 @@ const { logAudit } = require('../audit');
 
 const router = express.Router();
 
-/** Метаданные: описания анкет, версия, базовый адрес (для QR). */
+/** Метаданные: описания анкет, версия, адрес студенческого сайта (для QR и ссылок). */
 router.get('/meta', (req, res) => {
   res.json({
     app: 'bogusa-feedback',
     version: pkg.version,
     forms: FORM_LIST,
     show_teacher_name: config.SHOW_TEACHER_NAME,
-    public_base_url: config.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`,
+    student_base_url: config.studentBaseUrl(req),
+    public_base_url: config.studentBaseUrl(req),
   });
 });
 
@@ -39,6 +40,7 @@ router.get('/forms/:formType', (req, res, next) => {
     res.json({
       key: form.key,
       title: form.title,
+      subtitle: form.subtitle || '',
       short_title: form.shortTitle,
       description: form.description,
       intro: form.intro,
@@ -51,7 +53,6 @@ router.get('/forms/:formType', (req, res, next) => {
           kind: q.kind,
           label: q.label,
           hint: q.hint || null,
-          placeholder: q.placeholder || null,
           max_length: q.maxLength || null,
         })),
       })),

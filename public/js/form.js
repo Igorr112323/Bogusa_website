@@ -1,5 +1,5 @@
 /**
- * Заполнение анкеты студентом (мобильная версия).
+ * Заполнение анкеты студентом.
  *
  * Приватность: в localStorage/sessionStorage ничего не пишем, cookie не используем,
  * никаких данных о студенте не отправляем. Единственная «метка» — время начала
@@ -11,25 +11,27 @@ import { api, el, mount, clear, setParams, qsParam, toast } from './api.js';
 const MAX_TEXT = 2000;
 
 const state = {
-  step: 'discipline', // discipline | form | questions | done
   disciplines: [],
   discipline: null,
   topics: [],
-  formTypes: [],
+  forms: [],
   formType: null,
+  form: null,
   topic: null,
-  form: null, // структура анкеты с сервера
   scores: new Map(),
   comments: new Map(),
   startedAt: null,
   submitting: false,
 };
 
-const stepsNode = document.querySelector('#steps');
-const contentNode = document.querySelector('#step-content');
-const actionsNode = document.querySelector('#actions');
+const titleNode = document.querySelector('#form-title');
+const subtitleNode = document.querySelector('#form-subtitle');
 const alertsNode = document.querySelector('#alerts');
-const subtitleNode = document.querySelector('#header-subtitle');
+const surveyNode = document.querySelector('#survey');
+const disciplineSelect = document.querySelector('#discipline-select');
+const formSelect = document.querySelector('#form-select');
+const topicField = document.querySelector('#topic-field');
+const topicSelect = document.querySelector('#topic-select');
 
 /* ------------------------------ вспомогательное ------------------------------ */
 
@@ -41,296 +43,50 @@ function alertBox(message, kind = 'info') {
   mount(alertsNode, el('div', { class: `alert alert-${kind}`, attrs: { role: 'alert' }, text: message }));
 }
 
-function renderSteps() {
-  const order = ['discipline', 'form', 'questions'];
-  const labels = { discipline: 'Дисциплина', form: 'Анкета', questions: 'Вопросы' };
-  const currentIndex = order.indexOf(state.step === 'done' ? 'questions' : state.step);
-
-  mount(
-    stepsNode,
-    order.map((key, index) =>
-      el(
-        'span',
-        {
-          class: `step ${index === currentIndex ? 'active' : ''} ${index < currentIndex ? 'done' : ''}`,
-        },
-        [
-          el('span', { class: 'step-dot', text: index < currentIndex ? '✓' : String(index + 1) }),
-          el('span', { text: labels[key] }),
-        ]
-      )
-    )
-  );
+function optionText(discipline) {
+  return discipline.code ? `${discipline.title} (${discipline.code})` : discipline.title;
 }
 
-function setActions(children) {
-  mount(actionsNode, children);
+function topicText(topic) {
+  return topic.lesson_date ? `${topic.lesson_date} — ${topic.title}` : topic.title;
+}
+
+function fillDisciplineSelect() {
+  mount(disciplineSelect, [
+    el('option', { text: '— выберите дисциплину —', attrs: { value: '' } }),
+    ...state.disciplines.map((discipline) =>
+      el('option', { text: optionText(discipline), attrs: { value: String(discipline.id) } })
+    ),
+  ]);
+  disciplineSelect.value = state.discipline ? String(state.discipline.id) : '';
+}
+
+function fillFormSelect() {
+  mount(formSelect, state.forms.map((form) => el('option', { text: form.shortTitle, attrs: { value: form.key } })));
+  formSelect.value = state.formType || '';
+}
+
+function fillTopicSelect() {
+  mount(topicSelect, [
+    el('option', { text: '— выберите тему занятия —', attrs: { value: '' } }),
+    ...state.topics.map((topic) =>
+      el('option', { text: topicText(topic), attrs: { value: String(topic.id) } })
+    ),
+  ]);
+  topicSelect.value = state.topic ? String(state.topic.id) : '';
 }
 
 function scrollTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function loadDisciplines() {
-  const data = await api.get('/api/disciplines');
-  state.disciplines = data.disciplines || [];
-  return state.disciplines;
-}
+/* ------------------------------ пункты анкеты ------------------------------ */
 
-async function loadFormStructure(formType) {
-  return api.get(`/api/forms/${encodeURIComponent(formType)}`);
-}
-
-async function loadDiscipline(id) {
-  const data = await api.get(`/api/disciplines/${encodeURIComponent(id)}`);
-  state.discipline = data.discipline;
-  state.topics = data.discipline.topics || [];
-  return state.discipline;
-}
-
-/* ------------------------------ Шаг 1: дисциплина ------------------------------ */
-
-function renderDisciplineStep() {
-  state.step = 'discipline';
-  renderSteps();
-  alertBox('');
-  subtitleNode.textContent = 'шаг 1 из 3 · выбор дисциплины';
-
-  const select = el('select', {
-    class: 'select',
-    attrs: { id: 'discipline-select', required: true },
-    on: {
-      change: (event) => {
-        const id = Number(event.target.value);
-        state.discipline = state.disciplines.find((d) => d.id === id) || null;
-      },
-    },
-  });
-
-  select.append(el('option', { text: '— выберите дисциплину —', attrs: { value: '' } }));
-  for (const discipline of state.disciplines) {
-    const label = discipline.code ? `${discipline.title} (${discipline.code})` : discipline.title;
-    select.append(el('option', { text: label, attrs: { value: String(discipline.id) } }));
-  }
-  if (state.discipline) select.value = String(state.discipline.id);
-
-  const statusNode = el('div');
-
-  const card = el('div', { class: 'card' }, [
-    el('h1', { text: 'Выберите дисциплину' }),
-    el('p', {
-      class: 'soft small',
-      text: 'Анкета анонимная: мы не спрашиваем ФИО, номер группы и не сохраняем IP-адрес в базе.',
-    }),
-    el('div', { class: 'field' }, [
-      el('label', { class: 'label', text: 'Дисциплина', attrs: { for: 'discipline-select' } }),
-      select,
-      el('span', {
-        class: 'hint',
-        text: 'Если нужной дисциплины нет в списке, значит она ещё не открыта для анкетирования.',
-      }),
-    ]),
-    statusNode,
-  ]);
-
-  mount(contentNode, card);
-
-  setActions([
-    el('button', {
-      class: 'btn btn-primary btn-lg',
-      text: 'Продолжить',
-      attrs: { type: 'button' },
-      on: {
-        click: async () => {
-          const id = Number(select.value);
-          if (!id) {
-            statusNode.replaceChildren(el('div', { class: 'alert alert-warn', text: 'Выберите дисциплину из списка' }));
-            select.classList.add('invalid');
-            return;
-          }
-          select.classList.remove('invalid');
-          statusNode.replaceChildren();
-          try {
-            await loadDiscipline(id);
-            setParams({ discipline: id });
-            state.step = 'form';
-            renderFormStep();
-            scrollTop();
-          } catch (error) {
-            statusNode.replaceChildren(el('div', { class: 'alert alert-danger', text: error.message }));
-          }
-        },
-      },
-    }),
-  ]);
-}
-
-/* ------------------------------ Шаг 2: тема и тип анкеты ------------------------------ */
-
-function renderFormStep() {
-  state.step = 'form';
-  renderSteps();
-  alertBox('');
-  subtitleNode.textContent = 'шаг 2 из 3 · выбор анкеты';
-
-  if (state.topics.length === 0) {
-    mount(contentNode, [
-      el('div', { class: 'card' }, [
-        el('h1', { text: 'Анкетирование пока не открыто' }),
-        el('p', {
-          class: 'soft',
-          text: 'Для этой дисциплины ещё не добавлены темы занятий. Сообщите об этом преподавателю.',
-        }),
-        el('a', { class: 'btn btn-ghost', attrs: { href: '/' }, text: '← Вернуться к списку дисциплин' }),
-      ]),
-    ]);
-    setActions([]);
-    return;
-  }
-
-  // Тип анкеты
-  const typeCards = [
-    {
-      key: 'lesson',
-      title: 'Анкета по занятию',
-      text: 'Оценка конкретного проведённого занятия: цели, логика, наглядность, атмосфера, темп, организация.',
-    },
-    {
-      key: 'final',
-      title: 'Итоговая по дисциплине',
-      text: 'Оценка курса в целом и работы ведущего преподавателя: материалы, нагрузка, оценивание, обратная связь.',
-    },
-  ].map((item) => {
-    const button = el(
-      'button',
-      {
-        class: 'tile',
-        attrs: { type: 'button', 'aria-pressed': state.formType === item.key ? 'true' : 'false' },
-      },
-      [
-        el('span', { class: 'tile-title', text: item.title }),
-        el('span', { class: 'tile-meta' }, [el('span', { text: item.text })]),
-      ]
-    );
-    if (state.formType === item.key) button.classList.add('tile-active');
-    button.addEventListener('click', async () => {
-      state.formType = item.key;
-      state.form = await loadFormStructure(item.key);
-      setParams({ form: item.key });
-      renderFormStep();
-    });
-    return button;
-  });
-
-  // Темы (только для анкеты по занятию)
-  const topicSelect = el('select', {
-    class: 'select',
-    attrs: { id: 'topic-select' },
-    on: {
-      change: (event) => {
-        const id = Number(event.target.value);
-        state.topic = state.topics.find((t) => t.id === id) || null;
-      },
-    },
-  });
-  topicSelect.append(el('option', { text: '— выберите тему занятия —', attrs: { value: '' } }));
-  for (const topic of state.topics) {
-    const label = topic.lesson_date ? `${topic.lesson_date} · ${topic.title}` : topic.title;
-    topicSelect.append(el('option', { text: label, attrs: { value: String(topic.id) } }));
-  }
-  if (state.topic) topicSelect.value = String(state.topic.id);
-
-  const topicBlock = el('div', { class: 'field' }, [
-    el('label', { class: 'label', text: 'Тема занятия', attrs: { for: 'topic-select' } }),
-    topicSelect,
-    el('span', { class: 'hint', text: 'Для итоговой анкеты тема не требуется — оценивается вся дисциплина.' }),
-  ]);
-
-  const statusNode = el('div');
-  const needsTopic = state.formType === 'lesson';
-  if (topicBlock) topicBlock.classList.toggle('hidden', !needsTopic);
-
-  mount(contentNode, [
-    el('div', { class: 'card' }, [
-      el('h1', { text: 'Что оцениваем?' }),
-      el('p', { class: 'soft small' }, [
-        `Дисциплина: ${state.discipline.title}`,
-        state.discipline.teacher_name ? ` · Преподаватель: ${state.discipline.teacher_name}` : '',
-      ]),
-      el('div', { class: 'card-list' }, typeCards),
-    ]),
-    el('div', { class: 'card' }, [
-      state.form
-        ? el('div', {}, [
-            el('h2', { text: state.form.title }),
-            el('p', { class: 'soft small', text: state.form.intro }),
-            el('p', { class: 'tiny muted', text: `${state.form.scale_count} пунктов по шкале 1–5 и ${state.form.text_count} открытых вопроса. Открытые можно пропустить.` }),
-          ])
-        : el('p', { class: 'muted', text: 'Выберите тип анкеты, чтобы увидеть состав вопросов.' }),
-      needsTopic ? topicBlock : null,
-      statusNode,
-    ]),
-  ]);
-
-  setActions([
-    el('button', {
-      class: 'btn btn-ghost',
-      text: '← Назад',
-      attrs: { type: 'button' },
-      on: {
-        click: () => {
-          setParams({ discipline: state.discipline ? state.discipline.id : null, form: null, topic: null });
-          renderDisciplineStep();
-          scrollTop();
-        },
-      },
-    }),
-    el('button', {
-      class: 'btn btn-primary btn-lg',
-      text: 'Перейти к вопросам',
-      attrs: { type: 'button' },
-      on: {
-        click: () => {
-          if (!state.formType || !state.form) {
-            statusNode.replaceChildren(el('div', { class: 'alert alert-warn', text: 'Сначала выберите тип анкеты' }));
-            return;
-          }
-          if (state.formType === 'lesson' && !topicSelect.value) {
-            topicSelect.classList.add('invalid');
-            statusNode.replaceChildren(el('div', { class: 'alert alert-warn', text: 'Выберите тему занятия' }));
-            return;
-          }
-          topicSelect.classList.remove('invalid');
-          if (state.formType === 'lesson') {
-            const id = Number(topicSelect.value);
-            state.topic = state.topics.find((t) => t.id === id) || null;
-            setParams({ topic: id });
-          } else {
-            state.topic = null;
-            setParams({ topic: null });
-          }
-          state.startedAt = Date.now();
-          renderQuestionsStep();
-          scrollTop();
-        },
-      },
-    }),
-  ]);
-}
-
-/* ------------------------------ Шаг 3: вопросы ------------------------------ */
-
-function scaleQuestion(question, index, total) {
+function scaleQuestion(question) {
   const groupName = `q_${question.key}`;
   const wrapper = el('div', { class: 'question', dataset: { key: question.key } });
 
-  wrapper.append(
-    el('div', { class: 'question-label' }, [
-      el('span', { class: 'muted mono tiny', text: `${index + 1}/${total} ` }),
-      question.label,
-    ])
-  );
-  if (question.hint) wrapper.append(el('div', { class: 'question-hint', text: question.hint }));
+  wrapper.append(el('div', { class: 'question-label', text: question.label }));
 
   const scale = el('div', {
     class: 'scale',
@@ -340,72 +96,51 @@ function scaleQuestion(question, index, total) {
   for (let score = 1; score <= 5; score += 1) {
     const inputId = `${groupName}_${score}`;
     const input = el('input', {
-      attrs: {
-        type: 'radio',
-        name: groupName,
-        id: inputId,
-        value: String(score),
-      },
+      attrs: { type: 'radio', name: groupName, id: inputId, value: String(score) },
       on: {
         change: () => {
           state.scores.set(question.key, score);
           wrapper.classList.remove('invalid');
           const errorNode = wrapper.querySelector('.error-text');
           if (errorNode) errorNode.textContent = '';
-          updateProgress();
         },
       },
     });
     if (state.scores.get(question.key) === score) input.checked = true;
 
-    const label = el('label', { attrs: { for: inputId } }, [
-      el('span', { text: String(score) }),
-      el('span', { class: 'scale-word', text: state.form.scale_words?.[score] || '' }),
-    ]);
-
-    scale.append(input, label);
+    scale.append(
+      input,
+      el('label', { attrs: { for: inputId } }, [
+        el('span', { text: String(score) }),
+        el('span', { class: 'scale-word', text: state.form.scale_words?.[score] || '' }),
+      ])
+    );
   }
 
-  wrapper.append(scale);
-  wrapper.append(el('div', { class: 'error-text', attrs: { role: 'alert' } }));
+  wrapper.append(scale, el('div', { class: 'error-text', attrs: { role: 'alert' } }));
   return wrapper;
 }
 
 function textQuestion(question) {
   const wrapper = el('div', { class: 'question', dataset: { key: question.key } });
   const textareaId = `text_${question.key}`;
+  const limit = question.max_length || MAX_TEXT;
 
-  wrapper.append(
-    el('label', { class: 'question-label', text: question.label, attrs: { for: textareaId } })
-  );
-
-  const counter = el('div', { class: 'counter', text: `0 / ${MAX_TEXT}` });
   const textarea = el('textarea', {
     class: 'textarea',
-    attrs: {
-      id: textareaId,
-      maxlength: String(MAX_TEXT),
-      placeholder: question.placeholder || 'Ваш ответ (необязательно)',
-      rows: '3',
-    },
+    attrs: { id: textareaId, maxlength: String(limit), rows: '4' },
     on: {
       input: (event) => {
-        const value = event.target.value;
-        state.comments.set(question.key, value);
-        counter.textContent = `${value.length} / ${MAX_TEXT}`;
+        state.comments.set(question.key, event.target.value);
       },
     },
   });
-  const existing = state.comments.get(question.key);
-  if (existing) {
-    textarea.value = existing;
-    counter.textContent = `${existing.length} / ${MAX_TEXT}`;
-  }
+  const saved = state.comments.get(question.key);
+  if (saved) textarea.value = saved;
 
   wrapper.append(
-    textarea,
-    el('div', { class: 'counter-row' }, [counter]),
-    el('span', { class: 'hint', text: 'Необязательный вопрос — можно оставить пустым.' })
+    el('label', { class: 'question-label', text: question.label, attrs: { for: textareaId } }),
+    textarea
   );
   return wrapper;
 }
@@ -414,49 +149,44 @@ function allScaleQuestions() {
   return state.form.sections.flatMap((section) => section.questions).filter((q) => q.kind === 'scale');
 }
 
-function updateProgress() {
-  const total = allScaleQuestions().length;
-  const answered = allScaleQuestions().filter((q) => state.scores.has(q.key)).length;
-  const fill = document.querySelector('#progress-fill');
-  const label = document.querySelector('#progress-label');
-  if (fill) fill.style.setProperty('width', `${total ? Math.round((answered / total) * 100) : 0}%`);
-  if (label) label.textContent = `Заполнено ${answered} из ${total}`;
+/* ------------------------------ отрисовка анкеты ------------------------------ */
+
+function surveyReady() {
+  if (!state.discipline || !state.form) return false;
+  if (state.formType === 'lesson' && !state.topic) return false;
+  return true;
 }
 
-function renderQuestionsStep() {
-  state.step = 'questions';
-  renderSteps();
-  alertBox('');
-  subtitleNode.textContent = state.formType === 'lesson' ? 'анкета по занятию' : 'итоговая анкета';
+function renderSurvey() {
+  const needsTopic = state.formType === 'lesson';
+  topicField.hidden = !needsTopic;
+
+  if (!state.form) {
+    clear(surveyNode);
+    return;
+  }
+
+  titleNode.textContent = state.form.title;
+  document.title = state.form.title;
+  subtitleNode.textContent = state.form.subtitle || '';
+  subtitleNode.hidden = !state.form.subtitle;
+
+  if (!surveyReady()) {
+    clear(surveyNode);
+    if (needsTopic && state.discipline && state.topics.length === 0) {
+      alertBox('Для этой дисциплины темы занятий не добавлены.', 'warn');
+    }
+    return;
+  }
+
+  if (!state.startedAt) state.startedAt = Date.now();
 
   const sections = state.form.sections.map((section) => {
-    const scaleQuestions = section.questions.filter((q) => q.kind === 'scale');
-    const textQuestions = section.questions.filter((q) => q.kind === 'text');
-    const nodes = [];
-    scaleQuestions.forEach((question, index) => nodes.push(scaleQuestion(question, index, scaleQuestions.length)));
-    textQuestions.forEach((question) => nodes.push(textQuestion(question)));
-    return el('section', { class: 'card' }, [el('h2', { text: section.title }), ...nodes]);
+    const nodes = section.questions.map((question) =>
+      question.kind === 'scale' ? scaleQuestion(question) : textQuestion(question)
+    );
+    return el('section', { class: 'survey-section' }, [el('h2', { text: section.title }), ...nodes]);
   });
-
-  const contextLine = [
-    state.discipline ? state.discipline.title : '',
-    state.topic ? `· ${state.topic.title}` : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  mount(contentNode, [
-    el('div', { class: 'card card-tight' }, [
-      el('div', { class: 'small soft', text: contextLine }),
-      el('div', { class: 'tiny muted', text: 'Все пункты шкалы обязательны, открытые вопросы — по желанию.' }),
-      el('div', { class: 'progress' }, [el('div', { class: 'progress-fill', attrs: { id: 'progress-fill' } })]),
-      el('div', { class: 'tiny muted', attrs: { id: 'progress-label' }, text: 'Заполнено 0 из 0' }),
-    ]),
-    ...sections,
-    el('div', { class: 'card card-tight' }, [
-      el('p', { class: 'tiny muted', text: 'Отправляя анкету, вы подтверждаете, что она заполнена добровольно и анонимно.' }),
-    ]),
-  ]);
 
   // Honeypot: скрытое поле, которое заполняют только боты
   const honeypot = el('input', {
@@ -470,51 +200,42 @@ function renderQuestionsStep() {
       'aria-hidden': 'true',
     },
   });
-  contentNode.append(honeypot);
 
-  updateProgress();
+  const submitButton = el('button', {
+    class: 'btn btn-primary btn-lg',
+    text: 'Отправить',
+    attrs: { type: 'submit', id: 'submit-button' },
+  });
 
-  setActions([
-    el('button', {
-      class: 'btn btn-ghost',
-      text: '← Изменить выбор',
-      attrs: { type: 'button' },
-      on: {
-        click: () => {
-          renderFormStep();
-          scrollTop();
-        },
-      },
-    }),
-    el('button', {
-      class: 'btn btn-primary btn-lg',
-      text: 'Отправить анонимно',
-      attrs: { type: 'button', id: 'submit-button' },
-      on: { click: submit },
-    }),
+  const form = el('form', { attrs: { novalidate: true }, on: { submit: onSubmit } }, [
+    ...sections,
+    submitButton,
+    honeypot,
   ]);
+
+  mount(surveyNode, form);
 }
 
-/* ------------------------------ Отправка ------------------------------ */
+/* ------------------------------ отправка ------------------------------ */
 
-async function submit() {
+async function onSubmit(event) {
+  event.preventDefault();
   if (state.submitting) return;
-  const button = document.querySelector('#submit-button');
 
+  const button = document.querySelector('#submit-button');
   const unanswered = allScaleQuestions().filter((q) => !state.scores.has(q.key));
+
   if (unanswered.length > 0) {
     for (const question of unanswered) {
-      const node = contentNode.querySelector(`[data-key="${question.key}"]`);
-      if (node) {
-        node.classList.add('invalid');
-        const errorNode = node.querySelector('.error-text');
-        if (errorNode) errorNode.textContent = 'Выберите оценку от 1 до 5';
-      }
+      const node = surveyNode.querySelector(`[data-key="${question.key}"]`);
+      if (!node) continue;
+      node.classList.add('invalid');
+      const errorNode = node.querySelector('.error-text');
+      if (errorNode) errorNode.textContent = 'Выберите оценку от 1 до 5';
     }
-    const first = contentNode.querySelector(`[data-key="${unanswered[0].key}"]`);
+    const first = surveyNode.querySelector(`[data-key="${unanswered[0].key}"]`);
     if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    alertBox(`Не заполнено пунктов: ${unanswered.length}. Отметьте оценку в каждом пункте шкалы.`, 'warn');
-    toast('Часть пунктов осталась без оценки', 'danger');
+    alertBox(`Без оценки осталось пунктов: ${unanswered.length}`, 'warn');
     return;
   }
 
@@ -540,141 +261,163 @@ async function submit() {
   state.submitting = true;
   if (button) {
     button.disabled = true;
-    button.textContent = 'Отправляем…';
+    button.textContent = 'Отправка…';
   }
   alertBox('');
 
   try {
     await api.post('/api/responses', payload);
-    renderSuccess();
+    state.scores.clear();
+    state.comments.clear();
+    state.startedAt = Date.now();
+    alertBox('Ответ отправлен. Спасибо.', 'ok');
+    renderSurvey();
+    scrollTop();
   } catch (error) {
     alertBox(error.message, 'danger');
     toast(error.message, 'danger');
-    if (button) {
-      button.disabled = false;
-      button.textContent = 'Отправить анонимно';
-    }
   } finally {
     state.submitting = false;
+    const fresh = document.querySelector('#submit-button');
+    if (fresh) {
+      fresh.disabled = false;
+      fresh.textContent = 'Отправить';
+    }
   }
 }
 
-function renderSuccess() {
-  state.step = 'done';
-  renderSteps();
-  setActions([]);
-  subtitleNode.textContent = 'ответ отправлен';
-  clear(alertsNode);
+/* ------------------------------ выбор дисциплины и анкеты ------------------------------ */
 
-  const again = el('button', {
-    class: 'btn btn-primary',
-    text: 'Заполнить ещё одну анкету',
-    attrs: { type: 'button' },
-    on: {
-      click: () => {
-        state.scores.clear();
-        state.comments.clear();
-        state.formType = null;
-        state.form = null;
-        state.topic = null;
-        state.startedAt = null;
-        setParams({ discipline: null, topic: null, form: null });
-        renderDisciplineStep();
-        scrollTop();
-      },
-    },
-  });
-
-  mount(contentNode, [
-    el('div', { class: 'card center' }, [
-      el('div', { class: 'empty-mark', text: '✓', attrs: { 'aria-hidden': 'true' } }),
-      el('h1', { text: 'Спасибо! Анкета отправлена анонимно' }),
-      el('p', {
-        class: 'soft',
-        text: 'Преподаватель увидит только обобщённые оценки и текст комментариев. Связь ответа с вами установить невозможно.',
-      }),
-      el('div', { class: 'btn-row', style: { justifyContent: 'center' } }, [
-        again,
-        el('a', { class: 'btn btn-ghost', attrs: { href: '/' }, text: 'На главную' }),
-      ]),
-    ]),
-    el('div', { class: 'card' }, [
-      el('h2', { text: 'Что дальше?' }),
-      el('ul', { class: 'privacy-list' }, [
-        el('li', { text: 'Ответ сразу попал в обезличенную статистику дисциплины.' }),
-        el('li', { text: 'Комментарии преподаватель читает без имён и групп.' }),
-        el('li', { text: 'Если нужно оценить другое занятие — нажмите «Заполнить ещё одну анкету».' }),
-      ]),
-    ]),
-  ]);
+async function selectDiscipline(id) {
+  const discipline = state.disciplines.find((d) => String(d.id) === String(id)) || null;
+  if (!discipline) {
+    state.discipline = null;
+    state.topics = [];
+    state.topic = null;
+    return;
+  }
+  const data = await api.get(`/api/disciplines/${encodeURIComponent(discipline.id)}`);
+  state.discipline = { ...data.discipline, teacher_name: discipline.teacher_name };
+  state.topics = data.discipline.topics || [];
+  state.topic = null;
+  fillTopicSelect();
 }
 
-/* ------------------------------ Инициализация ------------------------------ */
+async function selectFormType(formType) {
+  if (!formType || formType === state.formType) return;
+  state.formType = formType;
+  state.form = await api.get(`/api/forms/${encodeURIComponent(formType)}`);
+}
+
+function resetAnswers() {
+  state.scores.clear();
+  state.comments.clear();
+  state.startedAt = null;
+}
+
+async function onDisciplineChange() {
+  alertBox('');
+  resetAnswers();
+  try {
+    await selectDiscipline(disciplineSelect.value);
+  } catch (error) {
+    alertBox(error.message, 'danger');
+    return;
+  }
+  setParams({ discipline: disciplineSelect.value || null, topic: null });
+  renderSurvey();
+}
+
+async function onFormChange() {
+  alertBox('');
+  resetAnswers();
+  try {
+    await selectFormType(formSelect.value);
+  } catch (error) {
+    alertBox(error.message, 'danger');
+    return;
+  }
+  setParams({ form: state.formType });
+  renderSurvey();
+}
+
+function onTopicChange() {
+  alertBox('');
+  resetAnswers();
+  const id = Number(topicSelect.value);
+  state.topic = state.topics.find((t) => t.id === id) || null;
+  setParams({ topic: state.topic ? state.topic.id : null });
+  renderSurvey();
+}
+
+/* ------------------------------ запуск ------------------------------ */
 
 async function init() {
-  renderSteps();
-  try {
-    state.formTypes = (await api.get('/api/meta')).forms || [];
-  } catch {
-    state.formTypes = [];
-  }
-
-  const disciplineParam = qsParam('discipline');
-  const topicParam = qsParam('topic');
-  const formParam = qsParam('form');
+  disciplineSelect.addEventListener('change', onDisciplineChange);
+  formSelect.addEventListener('change', onFormChange);
+  topicSelect.addEventListener('change', onTopicChange);
 
   try {
-    await loadDisciplines();
+    const meta = await api.get('/api/meta');
+    state.forms = meta.forms || [];
   } catch (error) {
     alertBox(error.message, 'danger');
     return;
   }
 
-  if (state.disciplines.length === 0) {
-    mount(contentNode, [
-      el('div', { class: 'card empty' }, [
-        el('div', { class: 'empty-mark', text: '📋', attrs: { 'aria-hidden': 'true' } }),
-        el('h1', { text: 'Анкетирование пока закрыто' }),
-        el('p', { text: 'Администратор ещё не открыл ни одной дисциплины. Загляните позже.' }),
-        el('a', { class: 'btn btn-ghost', attrs: { href: '/' }, text: 'На главную' }),
-      ]),
-    ]);
-    setActions([]);
+  if (state.forms.length === 0) {
+    alertBox('Анкеты недоступны. Обратитесь к ответственному за опросы.', 'danger');
     return;
   }
 
-  if (disciplineParam) {
-    const found = state.disciplines.find((d) => String(d.id) === String(disciplineParam));
-    if (found) {
-      try {
-        await loadDiscipline(found.id);
-        state.discipline = { ...state.discipline, teacher_name: found.teacher_name };
+  try {
+    const data = await api.get('/api/disciplines');
+    state.disciplines = data.disciplines || [];
+  } catch (error) {
+    alertBox(error.message, 'danger');
+    return;
+  }
 
-        if (formParam === 'lesson' || formParam === 'final') {
-          state.formType = formParam;
-          state.form = await loadFormStructure(formParam);
-          if (formParam === 'lesson' && topicParam) {
-            state.topic = state.topics.find((t) => String(t.id) === String(topicParam)) || null;
-          }
-          // Прямая ссылка из QR: сразу к вопросам (тема для итоговой анкеты не нужна)
-          if (formParam === 'final' || state.topic) {
-            state.startedAt = Date.now();
-            renderQuestionsStep();
-            return;
-          }
-          renderFormStep();
-          return;
-        }
-        state.step = 'form';
-        renderFormStep();
-        return;
+  fillDisciplineSelect();
+
+  state.formType = ['lesson', 'final'].includes(qsParam('form')) ? qsParam('form') : state.forms[0].key;
+  fillFormSelect();
+
+  if (state.disciplines.length === 0) {
+    alertBox('Анкетирование пока не открыто.', 'warn');
+    disciplineSelect.disabled = true;
+    return;
+  }
+
+  const disciplineParam = qsParam('discipline');
+  if (disciplineParam) {
+    disciplineSelect.value = String(disciplineParam);
+    if (disciplineSelect.value === String(disciplineParam)) {
+      try {
+        await selectDiscipline(disciplineParam);
       } catch (error) {
-        alertBox(`${error.message}. Выберите дисциплину вручную.`, 'warn');
+        alertBox(error.message, 'danger');
       }
     }
   }
 
-  renderDisciplineStep();
+  const requestedForm = state.formType;
+  state.formType = null;
+  try {
+    await selectFormType(requestedForm);
+  } catch (error) {
+    alertBox(error.message, 'danger');
+    return;
+  }
+
+  const topicParam = qsParam('topic');
+  if (topicParam && state.formType === 'lesson') {
+    const topicId = Number(topicParam);
+    state.topic = state.topics.find((t) => t.id === topicId) || null;
+    fillTopicSelect();
+  }
+
+  renderSurvey();
 }
 
 init();

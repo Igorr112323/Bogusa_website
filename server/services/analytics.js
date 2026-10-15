@@ -10,7 +10,13 @@
 
 const config = require('../config');
 const { all, get } = require('../db');
-const { FORMS, getScaleQuestions, getTextQuestions, isFormType } = require('../questions');
+const {
+  FORMS,
+  getScaleQuestions,
+  getTextQuestions,
+  getLegacyQuestions,
+  isFormType,
+} = require('../questions');
 
 const MAX_RESPONSES_IN_AGGREGATE = 50000;
 const MAX_COMMENTS = 1000;
@@ -125,8 +131,16 @@ function aggregate(filters = {}, options = {}) {
   const distribution = emptyDist();
   let overallSum = 0;
   let overallCount = 0;
+  // Строки приходят в порядке id, а дата ответа может быть любой (например, у
+  // демонстрационных данных), поэтому границы периода считаем перебором.
+  let firstResponseAt = null;
+  let lastResponseAt = null;
 
   for (const r of responses) {
+    if (typeof r.created_at === 'string') {
+      if (firstResponseAt === null || r.created_at < firstResponseAt) firstResponseAt = r.created_at;
+      if (lastResponseAt === null || r.created_at > lastResponseAt) lastResponseAt = r.created_at;
+    }
     if (byForm[r.form_type] !== undefined) byForm[r.form_type] += 1;
     if (typeof r.overall_avg === 'number' && r.overall_avg > 0) {
       overallSum += r.overall_avg;
@@ -144,8 +158,8 @@ function aggregate(filters = {}, options = {}) {
     by_form: byForm,
     overall_avg: overallCount > 0 ? round2(overallSum / overallCount) : null,
     distribution,
-    first_response_at: responses.length > 0 ? responses[responses.length - 1].created_at : null,
-    last_response_at: responses.length > 0 ? responses[0].created_at : null,
+    first_response_at: firstResponseAt,
+    last_response_at: lastResponseAt,
     hidden,
     min_answers_required: minAnswers,
     forms: [],
@@ -201,8 +215,16 @@ function aggregate(filters = {}, options = {}) {
     });
 
     const textQuestions = getTextQuestions(formType);
+    const legacyQuestions = getLegacyQuestions(formType);
     const comments = textQuestions.map((q) => ({ key: q.key, label: q.label, items: [] }));
-    const commentsByKey = new Map(comments.map((c) => [c.key, c]));
+    // Ответы по пунктам, снятым с анкеты, остаются в базе — показываем их отдельно.
+    const archived = legacyQuestions.map((q) => ({
+      key: q.key,
+      label: q.label,
+      items: [],
+      legacy: true,
+    }));
+    const commentsByKey = new Map([...comments, ...archived].map((c) => [c.key, c]));
 
     if (includeComments) {
       const formIds = new Set(formResponses.map((r) => r.id));
@@ -220,6 +242,7 @@ function aggregate(filters = {}, options = {}) {
         });
       }
       result.comments_count += comments.reduce((acc, c) => acc + c.items.length, 0);
+      result.comments_count += archived.reduce((acc, c) => acc + c.items.length, 0);
     }
 
     const totals = questions.reduce(
@@ -240,6 +263,7 @@ function aggregate(filters = {}, options = {}) {
       responses: formResponses.length,
       questions,
       comments: comments.filter((c) => c.items.length > 0),
+      archived_comments: archived.filter((c) => c.items.length > 0),
       avg_of_items: totals.count > 0 ? round2(totals.sum / totals.count) : null,
     });
   }
@@ -334,6 +358,34 @@ function exportRows(filters = {}) {
   });
 }
 
+/** Статистика по дисциплинам: сколько анкет и средний балл по каждой. */
+function disciplineStatsMap(filters = {}) {
+  const filter = buildFilter(filters);
+  const rows = all(
+    `SELECT r.discipline_id AS discipline_id,
+            COUNT(*) AS responses,
+            SUM(CASE WHEN r.form_type = 'lesson' THEN 1 ELSE 0 END) AS lesson_count,
+            SUM(CASE WHEN r.form_type = 'final' THEN 1 ELSE 0 END) AS final_count,
+            AVG(r.overall_avg) AS avg,
+            MAX(r.created_at) AS last_response_at
+       FROM responses r
+      WHERE ${filter.where} AND r.discipline_id IS NOT NULL
+      GROUP BY r.discipline_id`,
+    ...filter.params
+  );
+  const map = new Map();
+  for (const row of rows) {
+    map.set(row.discipline_id, {
+      responses: row.responses,
+      lesson_count: row.lesson_count,
+      final_count: row.final_count,
+      avg: row.avg === null ? null : round2(row.avg),
+      last_response_at: row.last_response_at,
+    });
+  }
+  return map;
+}
+
 /** Статистика по всем преподавателям (для админской таблицы). */
 function teacherStatsMap(filters = {}) {
   const filter = buildFilter(filters);
@@ -368,5 +420,6 @@ module.exports = {
   timeline,
   exportRows,
   teacherStatsMap,
+  disciplineStatsMap,
   round2,
 };

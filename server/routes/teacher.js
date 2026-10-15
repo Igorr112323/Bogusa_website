@@ -15,7 +15,7 @@ const {
   aggregate,
   timeline,
   exportRows,
-  teacherStatsMap,
+  disciplineStatsMap,
   buildFilter,
 } = require('../services/analytics');
 const { all, get } = require('../db');
@@ -46,14 +46,13 @@ router.get('/overview', (req, res, next) => {
     const scope = isAdmin(user) && !req.query.teacher_id ? {} : { teacherId };
 
     const totals = aggregate(parseFilters(req, scope), { includeComments: false });
-    const disciplines = isAdmin(user) && !req.query.teacher_id
-      ? visibleDisciplines(user)
-      : visibleDisciplines(user);
+    const disciplines = visibleDisciplines(user);
 
-    const stats = teacherStatsMap();
+    // Статистика именно по дисциплине: у одного преподавателя их может быть несколько.
+    const stats = disciplineStatsMap(parseFilters(req, scope));
 
     const enriched = disciplines.map((d) => {
-      const row = stats.get(d.teacher_id) || null;
+      const row = stats.get(d.id) || null;
       return {
         id: d.id,
         title: d.title,
@@ -63,7 +62,10 @@ router.get('/overview', (req, res, next) => {
         teacher_name: d.teacher_name || null,
         topics_count: d.topics_count,
         responses: row ? row.responses : 0,
+        lesson: row ? row.lesson_count : 0,
+        final: row ? row.final_count : 0,
         avg: row ? row.avg : null,
+        last_response_at: row ? row.last_response_at : null,
       };
     });
 
@@ -202,7 +204,7 @@ router.get('/comments', (req, res, next) => {
       throw new ApiError(403, MIN_ANSWERS_LABEL);
     }
 
-    const labels = questionLabels();
+    const labels = questionLabels(undefined, { includeLegacy: true });
     res.json({
       comments: rows.map((row) => ({
         ...row,

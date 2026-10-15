@@ -21,6 +21,8 @@ import {
   confirmDialog,
   loadToken,
   clearToken,
+  loadStudentBase,
+  studentUrl,
 } from './api.js';
 import { timelineChart, distributionBars, positiveBar } from './charts.js';
 
@@ -39,12 +41,12 @@ const topTabs = document.querySelector('#top-tabs');
 const userBadge = document.querySelector('#user-badge');
 
 const VIEWS = [
-  { key: 'overview', label: 'Сводка', icon: '📊' },
-  { key: 'teachers', label: 'Преподаватели', icon: '👥' },
-  { key: 'disciplines', label: 'Дисциплины и темы', icon: '📚' },
-  { key: 'reports', label: 'Отчёты', icon: '📄' },
-  { key: 'qr', label: 'QR и ссылки', icon: '🔗' },
-  { key: 'audit', label: 'Журнал действий', icon: '🗂' },
+  { key: 'overview', label: 'Сводка' },
+  { key: 'teachers', label: 'Преподаватели' },
+  { key: 'disciplines', label: 'Дисциплины и темы' },
+  { key: 'reports', label: 'Отчёты' },
+  { key: 'qr', label: 'QR и ссылки' },
+  { key: 'audit', label: 'Журнал действий' },
 ];
 
 /* ------------------------------ каркас ------------------------------ */
@@ -65,7 +67,7 @@ function renderNav() {
         attrs: { type: 'button', 'aria-current': state.view === view.key ? 'true' : 'false' },
         on: { click: () => go(view.key) },
       },
-      [el('span', { class: 'nav-ico', text: view.icon, attrs: { 'aria-hidden': 'true' } }), view.label]
+      view.label
     );
   mount(sideNav, VIEWS.map(make));
   mount(topTabs, VIEWS.map(make));
@@ -856,11 +858,11 @@ async function topicsModal({ discipline, onSaved }) {
 /* ------------------------------ QR и ссылки ------------------------------ */
 
 function buildFormUrl({ disciplineId, topicId, formType }) {
-  const params = new URLSearchParams();
-  if (disciplineId) params.set('discipline', String(disciplineId));
-  if (topicId) params.set('topic', String(topicId));
-  if (formType) params.set('form', formType);
-  return `${window.location.origin}/form.html${params.toString() ? `?${params}` : ''}`;
+  return studentUrl('/form.html', {
+    discipline: disciplineId,
+    topic: topicId,
+    form: formType,
+  });
 }
 
 function qrModal({ discipline = null, topic = null }) {
@@ -953,7 +955,7 @@ async function renderQr() {
         'div',
         { class: 'copy-row' },
         (() => {
-          const url = `${window.location.origin}/form.html`;
+          const url = studentUrl('/form.html');
           const input = el('input', { class: 'input', attrs: { readonly: true, value: url } });
           return [
             input,
@@ -1089,11 +1091,15 @@ async function renderReports() {
             ])
           )
         ),
-        form.comments.length > 0
+        [...form.comments, ...(form.archived_comments || [])].length > 0
           ? el('div', { class: 'comments-grid', style: { 'margin-top': '16px' } }, [
-              ...form.comments.map((group) =>
+              ...[...form.comments, ...(form.archived_comments || [])].map((group) =>
                 el('div', { class: 'comment-group card' }, [
-                  el('h3', {}, [el('span', { text: group.label }), el('span', { class: 'badge badge-brand', text: String(group.items.length) })]),
+                  el('h3', {}, [
+                    el('span', { text: group.label }),
+                    group.legacy ? el('span', { class: 'badge', text: 'вопрос снят с анкеты' }) : null,
+                    el('span', { class: 'badge badge-brand', text: String(group.items.length) }),
+                  ]),
                   ...group.items.slice(0, 50).map((item) =>
                     el('div', { class: 'comment' }, [
                       el('div', { class: 'comment-body', text: item.body }),
@@ -1204,6 +1210,7 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 
 (async function boot() {
   loadToken();
+  loadStudentBase();
   try {
     const { user } = await api.get('/api/auth/me');
     if (!user || user.role !== 'admin') throw new Error('not admin');

@@ -6,7 +6,13 @@
  * Все значения экранируются; пустая строка вместо null.
  */
 
-const { questionLabels, getScaleQuestions, getTextQuestions, FORMS } = require('./questions');
+const {
+  questionLabels,
+  getScaleQuestions,
+  getTextQuestions,
+  getLegacyQuestions,
+  FORMS,
+} = require('./questions');
 const { FORM_TYPE_RU } = require('./constants');
 const { unescapeHtml } = require('./sanitize');
 
@@ -29,7 +35,14 @@ function csvCell(value, delimiter) {
 function toCsv(rows, { delimiter = ';' } = {}) {
   const scaleKeys = [...getScaleQuestions('lesson'), ...getScaleQuestions('final')];
   const textKeys = [...getTextQuestions('lesson'), ...getTextQuestions('final')];
-  const labels = questionLabels();
+  const labels = questionLabels(undefined, { includeLegacy: true });
+
+  // Снятые с анкет вопросы: колонки добавляются только если по ним есть ответы,
+  // иначе выгрузка обрастала бы пустыми столбцами.
+  const legacyKeys = [...getLegacyQuestions('lesson'), ...getLegacyQuestions('final')];
+  const usedLegacyKeys = legacyKeys.filter((q) =>
+    rows.some((row) => (row.comments || []).some((c) => c.key === q.key))
+  );
 
   const header = [
     'ID анкеты',
@@ -41,6 +54,7 @@ function toCsv(rows, { delimiter = ';' } = {}) {
     'Средний балл анкеты',
     ...scaleKeys.map((q) => labels[q.key]?.label || q.key),
     ...textKeys.map((q) => `[комментарий] ${labels[q.key]?.label || q.key}`),
+    ...usedLegacyKeys.map((q) => `[комментарий, снят с анкеты] ${labels[q.key]?.label || q.key}`),
   ];
 
   const lines = [header.map((h) => csvCell(h, delimiter)).join(delimiter)];
@@ -68,6 +82,10 @@ function toCsv(rows, { delimiter = ';' } = {}) {
         return value === undefined ? '' : value;
       }),
       ...textKeys.map((q) => {
+        const items = commentsByKey.get(q.key);
+        return items ? items.join(' | ') : '';
+      }),
+      ...usedLegacyKeys.map((q) => {
         const items = commentsByKey.get(q.key);
         return items ? items.join(' | ') : '';
       }),

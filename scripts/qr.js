@@ -25,7 +25,8 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const base = config.PUBLIC_BASE_URL || `http://localhost:${config.PORT}`;
+  // QR всегда ведёт на студенческий адрес (порт PORT), а не на порт панелей.
+  const base = config.studentBaseUrl();
   let url = args.url || `${base.replace(/\/+$/, '')}/form.html`;
   if (!args.url) {
     const params = new URLSearchParams();
@@ -40,7 +41,9 @@ async function main() {
   console.log(`\nСсылка для студентов: ${url}\n`);
   console.log(ascii);
   console.log(
-    'Подсказка: задайте PUBLIC_BASE_URL в .env, иначе в QR попадёт адрес из этой машины.\n'
+    `Подсказка: студенческий сайт работает на порту ${config.PORT} (PORT в .env), ` +
+      `панели преподавателя и администратора — на порту ${config.STAFF_PORT} (STAFF_PORT).\n` +
+      'Если сайт доступен по домену, задайте PUBLIC_BASE_URL в .env — он и попадёт в QR.\n'
   );
 }
 

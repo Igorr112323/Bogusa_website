@@ -44,6 +44,9 @@ good(`Режим: ${config.NODE_ENV}`);
 if (config.JWT_SECRET && config.JWT_SECRET.length >= 32) good('Секрет JWT задан (токены живут между перезапусками)');
 else warn('Секрет JWT не задан явно — он сгенерирован и сохранён в data/jwt.secret');
 
+/* --- База данных: был ли файл до запуска проверки --- */
+const dbFileExisted = fs.existsSync(config.DB_FILE);
+
 /* --- Драйвер базы данных --- */
 const driverRequested = String(process.env.DB_DRIVER || '').trim();
 if (driverRequested) info(`DB_DRIVER задан вручную: ${driverRequested}`);
@@ -104,8 +107,14 @@ try {
     responses: get('SELECT COUNT(*) AS n FROM responses').n,
   };
 
-  if (counts.admin > 0) good(`Администраторов: ${counts.admin} (вход через /login)`);
-  else bad('Администратора нет — выполните: npm run seed');
+  if (counts.admin > 0) {
+    good(`Администраторов: ${counts.admin} (вход на порту ${config.STAFF_PORT}: /login)`);
+  } else if (!dbFileExisted) {
+    info('База создана только что, администратора в ней ещё нет.');
+    info('Заполните её: npm run seed -- --demo   (или запустите .\\start.ps1 — он сделает это сам)');
+  } else {
+    bad('Администратора нет — выполните: npm run seed');
+  }
 
   good(`Преподавателей: ${counts.teachers}, дисциплин: ${counts.disciplines}, тем: ${counts.topics}`);
   if (counts.responses > 0) good(`Собранных анкет: ${counts.responses}`);
@@ -139,25 +148,42 @@ try {
   bad(`Нет прав на запись в каталог данных: ${err.message}`);
 }
 
-/* --- Порт --- */
-const port = config.PORT;
-const server = net.createServer();
-server.once('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    warn(`Порт ${port} уже занят — возможно, сервер уже запущен: http://localhost:${port}/`);
-    info('Освободить порт: закройте другое окно с сервером или запустите с другим PORT.');
-  } else {
-    warn(`Не удалось проверить порт ${port}: ${err.message}`);
-  }
-  finish();
-});
-server.once('listening', () => {
-  server.close(() => {
-    good(`Порт ${port} свободен — можно запускать: npm start`);
-    finish();
+/* --- Порты --- */
+// Студенческий сайт и панели слушают разные порты: проверяем оба.
+const portsToCheck = [
+  { port: config.PORT, label: 'сайт студентов' },
+  { port: config.STAFF_PORT, label: 'вход, портал и админ-панель' },
+];
+
+if (config.PORT === config.STAFF_PORT) {
+  bad('PORT и STAFF_PORT совпадают — задайте разные порты в .env (например, 3000 и 3001).');
+}
+
+function checkPort(item, done) {
+  const probe = net.createServer();
+  probe.once('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      warn(`Порт ${item.port} (${item.label}) уже занят — возможно, сервер уже запущен.`);
+      info('Освободить порт: закройте другое окно с сервером или задайте другой порт в .env.');
+    } else {
+      warn(`Не удалось проверить порт ${item.port}: ${err.message}`);
+    }
+    done();
   });
-});
-server.listen(port, '0.0.0.0');
+  probe.once('listening', () => {
+    probe.close(() => {
+      good(`Порт ${item.port} свободен (${item.label})`);
+      done();
+    });
+  });
+  probe.listen(item.port, '0.0.0.0');
+}
+
+let pending = portsToCheck.length;
+function onPortChecked() {
+  pending -= 1;
+  if (pending === 0) finish();
+}
 
 function finish() {
   try {
@@ -171,8 +197,11 @@ function finish() {
     lines.push('  Подробная проверка базы: npm run dbcheck');
   } else {
     lines.push('  Готово. Запуск сервера: npm start  (Windows: .\\start.ps1)');
+    lines.push(`  Студенты: http://localhost:${config.PORT}/   Панели: http://localhost:${config.STAFF_PORT}/login`);
   }
   lines.push('');
   console.log(lines.join('\n'));
   process.exitCode = hasFailure ? 1 : 0;
 }
+
+for (const item of portsToCheck) checkPort(item, onPortChecked);

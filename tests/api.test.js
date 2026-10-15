@@ -2,9 +2,11 @@
 
 /**
  * Интеграционные тесты API: анонимная отправка, вход, разграничение доступа,
- * защита от XSS, выгрузка CSV.
+ * защита от XSS, выгрузка CSV, разделение студенческого и служебного портов.
  *
- * Тест поднимает приложение на случайном порту и использует отдельную временную БД.
+ * Тест поднимает два приложения на случайных портах (как в боевом запуске:
+ * студенты на PORT, преподаватель и администратор на STAFF_PORT) и использует
+ * отдельную временную БД.
  */
 
 const test = require('node:test');
@@ -26,16 +28,29 @@ process.env.RATE_LIMIT_LOGIN = '100000';
 process.env.RATE_LIMIT_SUBMIT = '100000';
 process.env.MIN_ANSWERS_TO_SHOW = '1';
 process.env.NODE_ENV = 'test';
+process.env.PORT = '39000';
+process.env.STAFF_PORT = '39001';
 
-const app = require('../server/app');
+const createApp = require('../server/app');
 const { ensureAdminAccount } = require('../server/seed');
-const { db } = require('../server/db');
+const { db, run, all } = require('../server/db');
 
-let server;
-let baseUrl;
+let studentServer;
+let staffServer;
+let studentUrl;
+let staffUrl;
 
-/** Мини-клиент с хранением cookie. */
-function makeClient() {
+/** Разделы, которые существуют только на служебном порту. */
+const STAFF_PREFIXES = ['/api/auth', '/api/teacher', '/api/admin', '/login', '/portal', '/admin'];
+
+function baseFor(url) {
+  const clean = url.split('?')[0].replace(/\/+$/, '') || '/';
+  const isStaff = STAFF_PREFIXES.some((prefix) => clean === prefix || clean.startsWith(`${prefix}/`));
+  return isStaff ? staffUrl : studentUrl;
+}
+
+/** Мини-клиент с хранением cookie. По умолчанию сам выбирает порт по адресу. */
+function makeClient(pinnedBase = null) {
   let cookie = '';
   return {
     get cookie() {
@@ -45,7 +60,7 @@ function makeClient() {
       const headers = { ...extraHeaders };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (cookie) headers.Cookie = cookie;
-      const res = await fetch(`${baseUrl}${url}`, {
+      const res = await fetch(`${pinnedBase || baseFor(url)}${url}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -78,38 +93,43 @@ function makeClient() {
   };
 }
 
-const lessonScores = {
-  l_goals: 5,
-  l_logic: 4,
-  l_visual: 3,
-  l_atmosphere: 5,
-  l_pace: 4,
-  l_org: 5,
-};
+/** Клиент, который всегда обращается к студенческому порту. */
+const studentClient = () => makeClient(studentUrl);
+/** Клиент, который всегда обращается к порту преподавателя и администратора. */
+const staffClient = () => makeClient(staffUrl);
 
-const finalScores = {
-  f_theory_practice: 5,
-  f_depth: 4,
-  f_materials: 4,
-  f_workload: 3,
-  f_style: 5,
-  f_fairness: 4,
-  f_feedback: 4,
-  f_overall: 5,
-  f_recommend: 5,
-};
+/* Все пункты анкет — состав берётся из определений, чтобы тест не «отставал». */
+const { getScaleQuestions } = require('../server/questions');
+
+function allScores(formType) {
+  const scores = {};
+  getScaleQuestions(formType).forEach((q, index) => {
+    scores[q.key] = (index % 5) + 1;
+  });
+  return scores;
+}
+
+const lessonScores = allScores('lesson');
+const finalScores = allScores('final');
 
 test.before(async () => {
   const admin = ensureAdminAccount();
   assert.ok(admin, 'администратор создан');
-  server = app.listen(0, '127.0.0.1');
-  await new Promise((resolve) => server.once('listening', resolve));
-  const { port } = server.address();
-  baseUrl = `http://127.0.0.1:${port}`;
+
+  studentServer = createApp('student').listen(0, '127.0.0.1');
+  await new Promise((resolve) => studentServer.once('listening', resolve));
+  studentUrl = `http://127.0.0.1:${studentServer.address().port}`;
+
+  staffServer = createApp('staff').listen(0, '127.0.0.1');
+  await new Promise((resolve) => staffServer.once('listening', resolve));
+  staffUrl = `http://127.0.0.1:${staffServer.address().port}`;
+
+  assert.notEqual(studentUrl, staffUrl, 'студенты и панели работают на разных портах');
 });
 
 test.after(() => {
-  server.close();
+  studentServer.close();
+  staffServer.close();
   db.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -117,39 +137,110 @@ test.after(() => {
 /* ----------------------------- публичные -------------------------------- */
 
 test('health и метаданные доступны без авторизации', async () => {
-  const client = makeClient();
+  const client = studentClient();
   const health = await client.get('/healthz');
   assert.equal(health.status, 200);
   assert.equal(health.json.ok, true);
+  assert.equal(health.json.scope, 'student');
 
   const meta = await client.get('/api/meta');
   assert.equal(meta.status, 200);
   assert.equal(meta.json.forms.length, 2);
   assert.ok(meta.json.forms.some((f) => f.key === 'lesson'));
   assert.ok(meta.json.forms.some((f) => f.key === 'final'));
+  assert.equal(
+    new URL(meta.json.student_base_url).port,
+    process.env.PORT,
+    'ссылки для студентов всегда ведут на студенческий порт'
+  );
 });
 
 test('описание анкеты содержит все пункты и подписи шкалы', async () => {
-  const client = makeClient();
-  const res = await client.get('/api/forms/final');
-  assert.equal(res.status, 200);
-  const questions = res.json.sections.flatMap((s) => s.questions);
-  assert.equal(res.json.scale_count, 9);
-  assert.ok(questions.every((q) => q.label.length > 0));
-  assert.equal(res.json.scale_labels['5'], '5 — полностью да');
+  const client = studentClient();
+
+  const final = await client.get('/api/forms/final');
+  assert.equal(final.status, 200);
+  assert.equal(final.json.title, 'Итоговая анкета оценки дисциплины и работы ведущего преподавателя');
+  assert.equal(final.json.scale_count, 15);
+  assert.equal(final.json.text_count, 3);
+  assert.equal(final.json.sections.length, 5);
+  const finalQuestions = final.json.sections.flatMap((s) => s.questions);
+  assert.ok(finalQuestions.every((q) => q.label.length > 0));
+  assert.ok(finalQuestions.every((q) => !q.hint), 'пояснений под вопросами нет');
+  assert.ok(finalQuestions.every((q) => !q.placeholder), 'подсказок-примеров нет');
+  assert.equal(final.json.scale_labels['1'], '1 — совершенно не согласен');
+  assert.equal(final.json.scale_labels['5'], '5 — полностью согласен');
+
+  const lesson = await client.get('/api/forms/lesson');
+  assert.equal(lesson.json.title, 'Анкета оценки качества проведенного занятия');
+  assert.match(lesson.json.subtitle, /^Пожалуйста, оцените проведенное занятие\./);
+  assert.equal(lesson.json.scale_count, 12);
+  assert.equal(lesson.json.text_count, 2);
+  assert.equal(lesson.json.sections.length, 4);
+  assert.equal(lesson.json.scale_words['1'], 'Не согласен');
+  assert.equal(lesson.json.scale_words['5'], 'Полностью');
 });
 
 test('неизвестный тип анкеты отклоняется', async () => {
-  const client = makeClient();
+  const client = studentClient();
   const res = await client.get('/api/forms/whatever');
   assert.equal(res.status, 400);
 });
 
 test('студент видит только активные дисциплины с темами', async () => {
-  const client = makeClient();
+  const client = studentClient();
   const empty = await client.get('/api/disciplines');
   assert.equal(empty.status, 200);
   assert.deepEqual(empty.json.disciplines, []);
+});
+
+/* ------------------------- разделение портов ---------------------------- */
+
+test('на студенческом порту разделы преподавателя и администратора не существуют', async () => {
+  const student = studentClient();
+  for (const url of [
+    '/login',
+    '/login.html',
+    '/portal/',
+    '/admin/',
+    '/js/login.js',
+    '/js/portal.js',
+    '/js/admin.js',
+    '/css/dashboard.css',
+  ]) {
+    const res = await student.get(url);
+    assert.equal(res.status, 404, `${url} не должен отдаваться на студенческом порту`);
+  }
+
+  for (const url of ['/api/auth/login', '/api/auth/me', '/api/teacher/overview', '/api/admin/overview']) {
+    const res = await student.get(url);
+    assert.equal(res.status, 404, `${url} не должен отвечать на студенческом порту`);
+  }
+
+  const login = await student.post('/api/auth/login', { login: 'admin', password: 'Admin#2026pass' });
+  assert.equal(login.status, 404, 'войти через студенческий порт нельзя');
+});
+
+test('в студенческих страницах нет упоминаний входа, портала и админ-панели', async () => {
+  const student = studentClient();
+  for (const url of ['/', '/form.html']) {
+    const res = await student.get(url);
+    assert.equal(res.status, 200);
+    const html = res.text.toLowerCase();
+    for (const forbidden of ['/login', '/portal', '/admin', 'вход для преподавателя', 'админ-панель']) {
+      assert.ok(!html.includes(forbidden), `на странице ${url} не должно быть «${forbidden}»`);
+    }
+  }
+});
+
+test('на служебном порту доступны вход, портал и админ-панель', async () => {
+  const staff = staffClient();
+  for (const url of ['/login', '/portal/', '/admin/']) {
+    const res = await staff.get(url);
+    assert.equal(res.status, 200, `${url} должен отдаваться на порту панелей`);
+  }
+  const health = await staff.get('/healthz');
+  assert.equal(health.json.scope, 'staff');
 });
 
 /* ----------------------------- админ-цепочка ---------------------------- */
@@ -161,7 +252,7 @@ let teacherId;
 let teacherPassword;
 
 test('администратор входит, создаёт преподавателя и дисциплину', async () => {
-  adminClient = makeClient();
+  adminClient = staffClient();
   const login = await adminClient.post('/api/auth/login', {
     login: 'admin',
     password: 'Admin#2026pass',
@@ -218,10 +309,8 @@ test('слабые пароли и повтор логина отклоняют�
 
 /* --------------------------- публичное заполнение ---------------------- */
 
-let responseId1;
-
 test('публичный каталог отдаёт дисциплину с темами и преподавателем', async () => {
-  const client = makeClient();
+  const client = studentClient();
   const list = await client.get('/api/disciplines');
   assert.equal(list.json.disciplines.length, 1);
   assert.equal(list.json.disciplines[0].title, 'Дискретная математика');
@@ -233,17 +322,16 @@ test('публичный каталог отдаёт дисциплину с т�
 });
 
 test('студент отправляет анкету по занятию анонимно', async () => {
-  const student = makeClient();
+  const student = studentClient();
   const res = await student.post('/api/responses', {
     discipline_id: disciplineId,
     topic_id: topicId,
     form_type: 'lesson',
     scores: lessonScores,
-    comments: { l_liked: 'Понятные примеры', l_improve: 'Больше практики', l_wishes: '' },
+    comments: { l_liked: 'Понятные примеры', l_improve: 'Больше практики' },
   });
   assert.equal(res.status, 201);
   assert.equal(res.json.ok, true);
-  responseId1 = res.json.id;
 
   // Сервер не должен возвращать ничего, что связывает ответ со студентом
   const keys = Object.keys(res.json).sort();
@@ -251,7 +339,7 @@ test('студент отправляет анкету по занятию ан�
 });
 
 test('анкета с пропущенными пунктами или чужим типом отклоняется', async () => {
-  const student = makeClient();
+  const student = studentClient();
   const incomplete = await student.post('/api/responses', {
     discipline_id: disciplineId,
     topic_id: topicId,
@@ -269,13 +357,26 @@ test('анкета с пропущенными пунктами или чужи�
   assert.equal(mixed.status, 400);
 });
 
+test('ответ по вопросу, которого больше нет в анкете, не принимается', async () => {
+  const student = studentClient();
+  const res = await student.post('/api/responses', {
+    discipline_id: disciplineId,
+    topic_id: topicId,
+    form_type: 'lesson',
+    scores: lessonScores,
+    comments: { l_wishes: 'Пожелание преподавателю' },
+  });
+  assert.equal(res.status, 400);
+  assert.match(res.json.error, /Неизвестный открытый вопрос/);
+});
+
 test('итоговая анкета сохраняется без темы', async () => {
-  const student = makeClient();
+  const student = studentClient();
   const res = await student.post('/api/responses', {
     discipline_id: disciplineId,
     form_type: 'final',
     scores: finalScores,
-    comments: { f_wishes: 'Спасибо за курс' },
+    comments: { f_strengths: 'Спасибо за курс' },
   });
   assert.equal(res.status, 201);
 });
@@ -291,7 +392,7 @@ test('оценки и открытые ответы нельзя связать 
 });
 
 test('«ловушка» для ботов молча не сохраняет ответ', async () => {
-  const bot = makeClient();
+  const bot = studentClient();
   const res = await bot.post('/api/responses', {
     discipline_id: disciplineId,
     topic_id: topicId,
@@ -309,13 +410,13 @@ test('«ловушка» для ботов молча не сохраняет о
 /* --------------------------- портал преподавателя ----------------------- */
 
 test('преподаватель без входа не получает доступ к отчётам', async () => {
-  const anon = makeClient();
+  const anon = staffClient();
   const res = await anon.get('/api/teacher/overview');
   assert.equal(res.status, 401);
 });
 
 test('преподаватель меняет временный пароль и видит свои дисциплины', async () => {
-  const teacher = makeClient();
+  const teacher = staffClient();
   const login = await teacher.post('/api/auth/login', { login: 'petrov', password: teacherPassword });
   assert.equal(login.status, 200);
   assert.equal(login.json.user.must_change_password, true);
@@ -338,11 +439,12 @@ test('преподаватель меняет временный пароль и
   assert.equal(overview.json.totals.lesson, 1);
   assert.equal(overview.json.totals.final, 1);
   assert.equal(overview.json.disciplines.length, 1);
-  assert.ok(overview.json.totals.overall_avg > 3, 'средний балл рассчитан');
+  assert.equal(overview.json.disciplines[0].responses, 2, 'в сводке — ответы именно этой дисциплины');
+  assert.ok(overview.json.totals.overall_avg > 1, 'средний балл рассчитан');
 });
 
 test('преподаватель видит агрегацию и комментарии по своей дисциплине', async () => {
-  const teacher = makeClient();
+  const teacher = staffClient();
   await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
 
   const report = await teacher.get(`/api/teacher/disciplines/${disciplineId}/report`);
@@ -350,14 +452,51 @@ test('преподаватель видит агрегацию и коммент
   assert.equal(report.json.total_responses, 2);
 
   const lessonForm = report.json.forms.find((f) => f.form_type === 'lesson');
-  assert.equal(lessonForm.questions.length, 6);
+  assert.equal(lessonForm.questions.length, 12, 'все пункты анкеты по занятию попадают в отчёт');
   const goals = lessonForm.questions.find((q) => q.key === 'l_goals');
-  assert.equal(goals.avg, 5);
+  assert.equal(goals.avg, lessonScores.l_goals);
   assert.equal(goals.count, 1);
+  assert.equal(goals.hint, null, 'пояснений к пунктам больше нет');
+  assert.match(goals.label, /^Понятность целей:/);
 
   const comments = lessonForm.comments.flatMap((c) => c.items).map((i) => i.body);
   assert.ok(comments.includes('Понятные примеры'));
+  assert.ok(comments.includes('Больше практики'));
   assert.ok(!comments.includes(''), 'пустые комментарии не сохраняются');
+});
+
+test('ответы по снятым с анкеты вопросам остаются видимыми в отчёте и выгрузке', async () => {
+  const { run, get } = require('../server/db');
+  // Старый ответ, собранный до версии 1.0.3: ключ l_wishes из формы убран.
+  const responseId = get(
+    "SELECT id FROM responses WHERE discipline_id = ? AND form_type = 'lesson' LIMIT 1",
+    disciplineId
+  ).id;
+  run(
+    `INSERT INTO answer_comments (response_id, question_key, body, created_date)
+     VALUES (?, ?, ?, ?)`,
+    responseId,
+    'l_wishes',
+    'СТАРЫЙ_ОТВЕТ_ПОЖЕЛАНИЕ',
+    '2026-09-30'
+  );
+
+  const teacher = staffClient();
+  await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
+
+  const report = await teacher.get(`/api/teacher/disciplines/${disciplineId}/report`);
+  const lessonForm = report.json.forms.find((f) => f.form_type === 'lesson');
+  const archived = (lessonForm.archived_comments || []).flatMap((c) => c.items).map((i) => i.body);
+  assert.ok(archived.includes('СТАРЫЙ_ОТВЕТ_ПОЖЕЛАНИЕ'), 'старые ответы не теряются');
+
+  const comments = await teacher.get(`/api/teacher/comments?discipline_id=${disciplineId}`);
+  const legacy = comments.json.comments.find((c) => c.question_key === 'l_wishes');
+  assert.ok(legacy, 'старый ответ виден в списке отзывов');
+  assert.equal(legacy.question_label, 'Пожелания преподавателю');
+
+  const csv = await teacher.get(`/api/teacher/export.csv?discipline_id=${disciplineId}`);
+  assert.ok(csv.text.includes('СТАРЫЙ_ОТВЕТ_ПОЖЕЛАНИЕ'), 'старый ответ попадает в CSV');
+  assert.ok(csv.text.includes('[комментарий, снят с анкеты]'), 'в CSV для него отдельная колонка');
 });
 
 test('чужая дисциплина и чужие темы недоступны преподавателю', async () => {
@@ -372,7 +511,7 @@ test('чужая дисциплина и чужие темы недоступн�
     teacher_id: other.json.teacher.id,
   });
 
-  const teacher = makeClient();
+  const teacher = staffClient();
   await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
 
   const foreign = await teacher.get(`/api/teacher/disciplines/${otherDiscipline.json.discipline.id}/report`);
@@ -385,7 +524,7 @@ test('чужая дисциплина и чужие темы недоступн�
 });
 
 test('преподаватель не имеет доступа к админским методам', async () => {
-  const teacher = makeClient();
+  const teacher = staffClient();
   await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
   const res = await teacher.get('/api/admin/teachers');
   assert.equal(res.status, 403);
@@ -394,16 +533,16 @@ test('преподаватель не имеет доступа к админс�
 /* ------------------------------ XSS и выгрузка -------------------------- */
 
 test('скрипт в открытом ответе сохраняется в безопасном виде', async () => {
-  const student = makeClient();
+  const student = studentClient();
   await student.post('/api/responses', {
     discipline_id: disciplineId,
     topic_id: topicId,
     form_type: 'lesson',
     scores: lessonScores,
-    comments: { l_wishes: '<script>alert("xss")</script> и ещё пожелание' },
+    comments: { l_improve: '<script>alert("xss")</script> и ещё пожелание' },
   });
 
-  const teacher = makeClient();
+  const teacher = staffClient();
   await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
   const comments = await teacher.get(`/api/teacher/comments?discipline_id=${disciplineId}&q=пожелание`);
   assert.equal(comments.status, 200);
@@ -413,18 +552,23 @@ test('скрипт в открытом ответе сохраняется в б
 });
 
 test('выгрузка CSV отдаётся файлом с корректной кодировкой', async () => {
-  const teacher = makeClient();
+  const teacher = staffClient();
   await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
   const res = await teacher.get(`/api/teacher/export.csv?discipline_id=${disciplineId}`);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/csv/);
   assert.ok(res.text.startsWith('ID анкеты;'), 'первая строка — заголовки колонок');
   assert.ok(res.text.includes('Дискретная математика'));
+  assert.ok(res.text.includes('Понятность целей'), 'в заголовках — формулировки из анкеты');
 
   // Проверяем «сырые» байты: файл должен начинаться с BOM, иначе Excel ломает кириллицу.
-  const raw = Buffer.from(await (await fetch(`${baseUrl}/api/teacher/export.csv?discipline_id=${disciplineId}`, {
-    headers: { Cookie: teacher.cookie },
-  })).arrayBuffer());
+  const raw = Buffer.from(
+    await (
+      await fetch(`${staffUrl}/api/teacher/export.csv?discipline_id=${disciplineId}`, {
+        headers: { Cookie: teacher.cookie },
+      })
+    ).arrayBuffer()
+  );
   assert.deepEqual([...raw.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'ожидается UTF-8 BOM');
 });
 
@@ -437,11 +581,18 @@ test('администратор видит сквозной отчёт по в�
   assert.deepEqual(report.json.by_form, { lesson: 2, final: 1 });
 });
 
-test('ссылка для студентов и QR-код формируются', async () => {
-  const link = await adminClient.get(`/api/admin/link?discipline_id=${disciplineId}&topic_id=${topicId}&form_type=lesson`);
+test('ссылка для студентов и QR-код ведут на студенческий порт', async () => {
+  const link = await adminClient.get(
+    `/api/admin/link?discipline_id=${disciplineId}&topic_id=${topicId}&form_type=lesson`
+  );
   assert.equal(link.status, 200);
   assert.match(link.json.url, /\/form\.html\?/);
   assert.match(link.json.url, new RegExp(`discipline=${disciplineId}`));
+  assert.ok(
+    link.json.url.includes(`:${process.env.PORT}/`),
+    `ссылка для студентов должна вести на порт ${process.env.PORT}, получено: ${link.json.url}`
+  );
+  assert.ok(!link.json.url.includes(`:${process.env.STAFF_PORT}/`), 'адрес панели студентам не отдаётся');
 
   const qr = await adminClient.get(`/api/admin/qr.png?discipline_id=${disciplineId}`);
   assert.equal(qr.status, 200);
@@ -458,7 +609,7 @@ test('журнал аудита содержит действия админис
 });
 
 test('сессия работает по Bearer-токену, если cookie недоступна (iframe, блокировка 3rd-party cookie)', async () => {
-  const raw = await fetch(`${baseUrl}/api/auth/login`, {
+  const raw = await fetch(`${staffUrl}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ login: 'petrov', password: 'Noviy#Parol2026' }),
@@ -467,39 +618,59 @@ test('сессия работает по Bearer-токену, если cookie н
   assert.ok(token, 'токен возвращается в ответе на вход');
 
   // Браузер заблокировал cookie — работаем только по заголовку Authorization
-  const withoutCookie = await fetch(`${baseUrl}/api/auth/me`, {
+  const withoutCookie = await fetch(`${staffUrl}/api/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   assert.equal(withoutCookie.status, 200);
 
-  const overview = await fetch(`${baseUrl}/api/teacher/overview`, {
+  const overview = await fetch(`${staffUrl}/api/teacher/overview`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   assert.equal(overview.status, 200);
 
   // Битая cookie не должна ломать валидный токен
-  const staleCookie = await fetch(`${baseUrl}/api/auth/me`, {
+  const staleCookie = await fetch(`${staffUrl}/api/auth/me`, {
     headers: { Cookie: 'bf_token=broken.token.value', Authorization: `Bearer ${token}` },
   });
   assert.equal(staleCookie.status, 200);
 
   // Валидная cookie имеет приоритет, даже если рядом мусорный Bearer
-  const mixed = await fetch(`${baseUrl}/api/auth/me`, {
+  const mixed = await fetch(`${staffUrl}/api/auth/me`, {
     headers: { Cookie: `bf_token=${token}`, Authorization: 'Bearer broken.token.value' },
   });
   assert.equal(mixed.status, 200);
 
   // Полностью неверные данные — доступа нет
-  const denied = await fetch(`${baseUrl}/api/teacher/overview`, {
+  const denied = await fetch(`${staffUrl}/api/teacher/overview`, {
     headers: { Authorization: 'Bearer broken.token.value' },
   });
   assert.equal(denied.status, 401);
 });
 
 test('выход из системы очищает cookie', async () => {
-  const client = makeClient();
+  const client = staffClient();
   await client.post('/api/auth/login', { login: 'admin', password: 'Admin#2026pass' });
   assert.equal((await client.get('/api/auth/me')).status, 200);
   await client.post('/api/auth/logout');
   assert.equal((await client.get('/api/auth/me')).status, 401);
+});
+
+
+test('границы периода в сводке не зависят от порядка записей в базе', async () => {
+  const teacher = staffClient();
+  await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
+
+  // Ответы хранятся в порядке id, а их даты могут идти вразнобой (демонстрационные
+  // данные, восстановление из резервной копии). Границы должны считаться по датам.
+  const ids = all('SELECT id FROM responses ORDER BY id DESC').map((row) => row.id);
+  assert.ok(ids.length >= 2, 'для проверки нужно хотя бы два ответа');
+  run(`UPDATE responses SET created_at = '2026-05-01T09:00:00.000Z'`);
+  // Самый новый по id ответ делаем самым ранним, а самый старый по id — самым поздним.
+  run(`UPDATE responses SET created_at = '2026-01-05T08:00:00.000Z' WHERE id = ?`, ids[0]);
+  run(`UPDATE responses SET created_at = '2026-09-18T12:30:00.000Z' WHERE id = ?`, ids[ids.length - 1]);
+
+  const overview = await teacher.get('/api/teacher/overview');
+  assert.equal(overview.status, 200);
+  assert.equal(overview.json.totals.first_response_at, '2026-01-05T08:00:00.000Z');
+  assert.equal(overview.json.totals.last_response_at, '2026-09-18T12:30:00.000Z');
 });

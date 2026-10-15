@@ -86,7 +86,7 @@ export function timelineChart(points) {
         width: barWidth,
         height: barH,
         rx: 2,
-        fill: '#c7d2fe',
+        fill: '#b9c8da',
       })
     );
   });
@@ -97,14 +97,14 @@ export function timelineChart(points) {
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${(padding.left + index * step).toFixed(1)} ${avgY(point.avg).toFixed(1)}`)
     .join(' ');
 
-  root.append(svg('path', { d: pathData, fill: 'none', stroke: '#4f46e5', 'stroke-width': '2.5', 'stroke-linejoin': 'round' }));
+  root.append(svg('path', { d: pathData, fill: 'none', stroke: '#2f4f70', 'stroke-width': '2.5', 'stroke-linejoin': 'round' }));
   points.forEach((point, index) => {
     root.append(
       svg('circle', {
         cx: padding.left + index * step,
         cy: avgY(point.avg),
         r: 3,
-        fill: '#4f46e5',
+        fill: '#2f4f70',
       })
     );
   });
@@ -142,7 +142,7 @@ export function timelineChart(points) {
     root,
     el('div', { class: 'chart-legend' }, [
       el('span', {}, [el('i', { class: 'legend-dot brand' }), 'средний балл (1–5)']),
-      el('span', {}, [el('i', { class: 'legend-dot', style: { background: '#c7d2fe' } }), 'количество анкет за день']),
+      el('span', {}, [el('i', { class: 'legend-dot', style: { background: '#b9c8da' } }), 'количество анкет за день']),
     ]),
   ]);
 }
