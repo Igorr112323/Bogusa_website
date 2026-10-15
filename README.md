@@ -35,7 +35,9 @@
 
 ## Быстрый старт
 
-Требования: **Node.js 18.18+** (рекомендуется 20 или 22) и npm.
+Требования: **Node.js 18.18+** (рекомендуется 22 LTS) и npm.
+
+> **Windows?** Есть готовый релиз и скрипт запуска в один шаг — см. [Установка на Windows (PowerShell)](#установка-на-windows-powershell--самый-простой-путь).
 
 ```bash
 # 1. Установить зависимости
@@ -108,17 +110,20 @@ npm run help     # шпаргалка по всем командам
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $zip = "$env:TEMP\bogusa-feedback-v1.0.0.zip"
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/releases/download/v1.0.0/bogusa-feedback-v1.0.0.zip' -OutFile $zip
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.0.zip' -OutFile $zip
 
-# 2) распаковать в свою папку
+# 2) распаковать в свою папку (внутри появится Bogusa_website-1.0.0)
 $dst = "$env:USERPROFILE\Bogusa_website"
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 Expand-Archive -Path $zip -DestinationPath $dst -Force
 
-# 3) запустить установку и сервер
-cd $dst
+# 3) установить и запустить
+cd "$dst\Bogusa_website-1.0.0"
 .\start.ps1
 ```
+
+Скачать можно и вручную: страница [Releases](https://github.com/Igorr112323/Bogusa_website/releases) →
+у версии **v1.0.0** ссылка **Source code (zip)**.
 
 Скрипт `start.ps1` сам: проверит Node.js, выполнит `npm install`, создаст `.env`,
 инициализирует базу с администратором и демо-данными и запустит сервер.
@@ -170,22 +175,28 @@ npm run help        # шпаргалка по всем командам
 
 ### Обновление до новой версии
 
-Данные (анкеты, аккаунты) лежат в папке `data` — сохраните её перед обновлением:
+Вся база (анкеты, аккаунты, дисциплины) лежит в папке `data`, настройки — в `.env`.
+При обновлении перенесите их в новую версию:
 
 ```powershell
-# 1) сохранить базу
-Copy-Item .\data "$env:USERPROFILE\Bogusa_website_data_backup" -Recurse -Force
+# 1) скачать архив новой версии и распаковать в отдельную папку
+$ProgressPreference = 'SilentlyContinue'
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.0.zip' -OutFile "$env:TEMP\update.zip"
+Expand-Archive "$env:TEMP\update.zip" -DestinationPath "$env:USERPROFILE\Bogusa_new" -Force
+$old = "$env:USERPROFILE\Bogusa_website\Bogusa_website-1.0.0"     # текущая версия
+$new = Get-ChildItem "$env:USERPROFILE\Bogusa_new" -Directory | Select-Object -First 1   # новая версия
 
-# 2) скачать новый релиз и распаковать поверх папки проекта (код обновится, data останется)
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/releases/latest/download/bogusa-feedback-v1.0.0.zip' -OutFile "$env:TEMP\update.zip"
-Expand-Archive "$env:TEMP\update.zip" -DestinationPath $dst -Force
+# 2) перенести свою базу и настройки
+Copy-Item "$old\data" "$($new.FullName)\data" -Recurse -Force
+Copy-Item "$old\.env" "$($new.FullName)\.env" -Force
 
-# 3) запустить снова — npm install выполнится автоматически, если нужно
-cd $dst
+# 3) запустить новую версию (при необходимости зависимости доустановятся сами)
+cd $new.FullName
 .\start.ps1
 ```
 
 Список всех выпущенных версий — на [странице релизов](https://github.com/Igorr112323/Bogusa_website/releases).
+Перед обновлением стоит скопировать папку `data` в надёжное место — там вся база анкет.
 
 ### Если что-то пошло не так (Windows)
 
