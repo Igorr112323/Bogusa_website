@@ -364,7 +364,7 @@ curl -X POST http://localhost:3000/api/responses \
 npm test
 ```
 
-58 проверок в четырёх файлах:
+58 проверок в пяти файлах:
 
 - `tests/questions.test.js` — состав анкет: 6 и 9 оценочных пунктов, уникальность ключей, шкала 1–5;
 - `tests/validation.test.js` — валидация ответов, HTML-экранирование, очистка текста, CSV;
