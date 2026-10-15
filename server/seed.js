@@ -65,13 +65,18 @@ function seedDemoStructure() {
 
   let teacher = get("SELECT * FROM users WHERE login = 'ivanova'");
   if (!teacher) {
-    const password = generatePassword();
+    // Пароль демо-преподавателя можно зафиксировать через DEMO_TEACHER_PASSWORD
+    // (удобно для демонстрации); иначе генерируется случайный и требуются
+    // обязательная смена при первом входе.
+    const fixed = (process.env.DEMO_TEACHER_PASSWORD || '').trim();
+    const password = fixed || generatePassword();
     run(
       `INSERT INTO users (login, password_hash, full_name, role, is_active, must_change_password, token_version, created_at, updated_at)
-       VALUES (?, ?, ?, 'teacher', 1, 1, 1, ?, ?)`,
+       VALUES (?, ?, ?, 'teacher', 1, ?, 1, ?, ?)`,
       'ivanova',
       hashPasswordSync(password),
       sanitizeForStorage('Иванова Мария Петровна'),
+      fixed ? 0 : 1,
       nowIso(),
       nowIso()
     );
