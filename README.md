@@ -106,24 +106,43 @@ npm run help     # шпаргалка по всем командам
 Откройте PowerShell и вставьте блок целиком:
 
 ```powershell
-# 1) скачать архив релиза во временную папку
+# 1) проверить Node.js (нужен 22 или новее; если не установлен — см. следующий блок)
+node -v
+
+# 2) скачать архив релиза во временную папку
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$zip = "$env:TEMP\bogusa-feedback-v1.0.0.zip"
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.0.zip' -OutFile $zip
+$zip = "$env:TEMP\bogusa-feedback-v1.0.1.zip"
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.1.zip' -OutFile $zip
 
-# 2) распаковать в свою папку (внутри появится Bogusa_website-1.0.0)
+# 3) распаковать в свою папку (внутри появится Bogusa_website-1.0.1)
 $dst = "$env:USERPROFILE\Bogusa_website"
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 Expand-Archive -Path $zip -DestinationPath $dst -Force
 
-# 3) установить и запустить
-cd "$dst\Bogusa_website-1.0.0"
+# 4) установить и запустить
+cd "$dst\Bogusa_website-1.0.1"
 .\start.ps1
 ```
 
+**Если Node.js не установлен** — скрипт предложит поставить его сам (через `winget`). Можно
+поставить и загодя, одной командой:
+
+```powershell
+winget install --exact --id OpenJS.NodeJS.LTS
+```
+
+После установки **закройте и снова откройте PowerShell** (чтобы команда `node` попала в PATH),
+затем повторите шаги 2–4. Проверка: `node -v` должно показать v22.x, v24.x или v26.x.
+
+Скрипт также принимает `-InstallNode`, чтобы поставить Node.js через winget без вопросов:
+
+```powershell
+.\start.ps1 -InstallNode
+```
+
 Скачать можно и вручную: страница [Releases](https://github.com/Igorr112323/Bogusa_website/releases) →
-у версии **v1.0.0** ссылка **Source code (zip)**.
+у версии **v1.0.1** ссылка **Source code (zip)**.
 
 Скрипт `start.ps1` сам: проверит Node.js, выполнит `npm install`, создаст `.env`,
 инициализирует базу с администратором и демо-данными и запустит сервер.
@@ -181,9 +200,9 @@ npm run help        # шпаргалка по всем командам
 ```powershell
 # 1) скачать архив новой версии и распаковать в отдельную папку
 $ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.0.zip' -OutFile "$env:TEMP\update.zip"
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.1.zip' -OutFile "$env:TEMP\update.zip"
 Expand-Archive "$env:TEMP\update.zip" -DestinationPath "$env:USERPROFILE\Bogusa_new" -Force
-$old = "$env:USERPROFILE\Bogusa_website\Bogusa_website-1.0.0"     # текущая версия
+$old = "$env:USERPROFILE\Bogusa_website\Bogusa_website-1.0.1"     # текущая версия
 $new = Get-ChildItem "$env:USERPROFILE\Bogusa_new" -Directory | Select-Object -First 1   # новая версия
 
 # 2) перенести свою базу и настройки
@@ -202,7 +221,7 @@ cd $new.FullName
 
 | Симптом | Что делать |
 | --- | --- |
-| `npm : Имя "npm" не распознано` | Node.js не установлен либо PowerShell не перезапущен после установки |
+| `npm : Имя "npm" не распознано`, «Node.js не найден» | Поставьте Node.js: `winget install --exact --id OpenJS.NodeJS.LTS`, затем закройте и заново откройте PowerShell. Либо запустите `.\start.ps1 -InstallNode` — скрипт установит Node.js сам |
 | «выполнение сценариев отключено» | Запустите `powershell -ExecutionPolicy Bypass -File .\start.ps1` или используйте `start.cmd` |
 | Долго скачивается архив | Добавьте `$ProgressPreference = 'SilentlyContinue'` (см. блок выше) или скачайте zip вручную со страницы релизов |
 | `npm install` ругается на `bcrypt`/`better-sqlite3` | Это опциональные пакеты: сервис работает и без них (пароли — scrypt, база — встроенный SQLite). Проверьте командой `npm run doctor` |

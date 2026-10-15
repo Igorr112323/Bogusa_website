@@ -12,6 +12,7 @@ const { ApiError } = require('../errors');
 const { parseId, parseFormType, validateSubmission } = require('../validate');
 const { sanitizeForStorage, sanitizeText } = require('../sanitize');
 const { FORMS, FORM_LIST, getScaleQuestions, getTextQuestions } = require('../questions');
+const pkg = require('../../package.json');
 const { listPublicDisciplines, getPublicDiscipline } = require('../services/catalog');
 const { createResponse } = require('../services/responses');
 const { catalogLimiter, submitLimiter } = require('../middleware/rateLimit');
@@ -23,7 +24,7 @@ const router = express.Router();
 router.get('/meta', (req, res) => {
   res.json({
     app: 'bogusa-feedback',
-    version: '1.0.0',
+    version: pkg.version,
     forms: FORM_LIST,
     show_teacher_name: config.SHOW_TEACHER_NAME,
     public_base_url: config.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`,

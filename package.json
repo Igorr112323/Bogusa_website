@@ -1,6 +1,6 @@
 {
   "name": "bogusa-feedback",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Анонимная обратная связь от студентов к преподавателю: анкеты по занятию и итоговые по дисциплине",
   "type": "commonjs",
