@@ -18,6 +18,7 @@
 ## Содержание
 
 - [Быстрый старт](#быстрый-старт)
+- [Установка на Windows (PowerShell)](#установка-на-windows-powershell--самый-простой-путь)
 - [Роли и сценарии работы](#роли-и-сценарии-работы)
 - [Как выдать доступ преподавателю](#как-выдать-доступ-преподавателю)
 - [Как раздать анкету студентам (ссылка и QR)](#как-раздать-анкету-студентам-ссылка-и-qr)
@@ -82,7 +83,124 @@ npm test         # автотесты (58 проверок: API, роли, XSS, 
 npm run seed     # создать администратора и демо-структуру
 npm run reset    # ПОЛНЫЙ СБРОС: удалить файл БД и создать заново
 npm run qr       # напечатать QR-код со ссылкой на анкету в терминале
+npm run doctor   # проверить окружение: Node.js, драйвер БД, порт, состояние базы
+npm run help     # шпаргалка по всем командам
 ```
+
+Скрипты запуска «в один клик» (установка + старт сервера): `start.ps1` и `start.cmd` (Windows),
+`start.sh` (macOS и Linux).
+
+---
+
+---
+
+## Установка на Windows (PowerShell) — самый простой путь
+
+Нужен только **Node.js 22 LTS** ([скачать](https://nodejs.org/ru/download)) — установите со стандартными
+настройками и **откройте PowerShell заново**, чтобы команда `node` появилась в PATH.
+
+### Вариант A. Скачать готовый релиз и запустить скриптом
+
+Откройте PowerShell и вставьте блок целиком:
+
+```powershell
+# 1) скачать архив релиза во временную папку
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$zip = "$env:TEMP\bogusa-feedback-v1.0.0.zip"
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/releases/download/v1.0.0/bogusa-feedback-v1.0.0.zip' -OutFile $zip
+
+# 2) распаковать в свою папку
+$dst = "$env:USERPROFILE\Bogusa_website"
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Expand-Archive -Path $zip -DestinationPath $dst -Force
+
+# 3) запустить установку и сервер
+cd $dst
+.\start.ps1
+```
+
+Скрипт `start.ps1` сам: проверит Node.js, выполнит `npm install`, создаст `.env`,
+инициализирует базу с администратором и демо-данными и запустит сервер.
+**Пароль администратора** он напечатает в этом же окне — сохраните его.
+
+Если PowerShell запрещает запуск скриптов (ошибка про Execution Policy), используйте:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+Или просто дважды щёлкните по файлу **`start.cmd`** в папке проекта.
+
+Полезные варианты запуска:
+
+```powershell
+.\start.ps1 -Port 8080      # другой порт
+.\start.ps1 -NoDemo         # пустая база, без демонстрационных ответов
+.\start.ps1 -Reset          # пересоздать базу (удалит текущие анкеты!)
+.\start.ps1 -SkipInstall    # не запускать npm install
+```
+
+### Вариант B. Вручную (те же шаги по отдельности)
+
+```powershell
+cd $env:USERPROFILE\Bogusa_website   # папка, куда распакован архив
+npm install                          # 1–3 минуты
+Copy-Item .env.example .env          # настройки
+npm run seed -- --demo               # создаст админа (пароль напечатается) и демо-данные
+npm start                            # запуск сервера
+```
+
+Проверка окружения, если что-то не стартует:
+
+```powershell
+npm run doctor      # Node.js, драйвер БД, права на запись, свободен ли порт
+npm run help        # шпаргалка по всем командам
+```
+
+### Как открыть сайт
+
+После запуска откройте в браузере:
+
+| Роль | Адрес | Доступ |
+| --- | --- | --- |
+| Студенты | http://localhost:3000/ | без входа, можно раздать QR/ссылку |
+| Преподаватель | http://localhost:3000/portal/ | логин и пароль выдаёт администратор |
+| Администратор | http://localhost:3000/admin/ | логин `admin`, пароль из вывода `start.ps1` |
+
+### Обновление до новой версии
+
+Данные (анкеты, аккаунты) лежат в папке `data` — сохраните её перед обновлением:
+
+```powershell
+# 1) сохранить базу
+Copy-Item .\data "$env:USERPROFILE\Bogusa_website_data_backup" -Recurse -Force
+
+# 2) скачать новый релиз и распаковать поверх папки проекта (код обновится, data останется)
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/releases/latest/download/bogusa-feedback-v1.0.0.zip' -OutFile "$env:TEMP\update.zip"
+Expand-Archive "$env:TEMP\update.zip" -DestinationPath $dst -Force
+
+# 3) запустить снова — npm install выполнится автоматически, если нужно
+cd $dst
+.\start.ps1
+```
+
+Список всех выпущенных версий — на [странице релизов](https://github.com/Igorr112323/Bogusa_website/releases).
+
+### Если что-то пошло не так (Windows)
+
+| Симптом | Что делать |
+| --- | --- |
+| `npm : Имя "npm" не распознано` | Node.js не установлен либо PowerShell не перезапущен после установки |
+| «выполнение сценариев отключено» | Запустите `powershell -ExecutionPolicy Bypass -File .\start.ps1` или используйте `start.cmd` |
+| Долго скачивается архив | Добавьте `$ProgressPreference = 'SilentlyContinue'` (см. блок выше) или скачайте zip вручную со страницы релизов |
+| `npm install` ругается на `bcrypt`/`better-sqlite3` | Это опциональные пакеты: сервис работает и без них (пароли — scrypt, база — встроенный SQLite). Проверьте командой `npm run doctor` |
+| Порт занят (`EADDRINUSE`) | Запустите на другом порту: `.\start.ps1 -Port 8080` либо закройте прошлое окно сервера |
+| «Отказано в доступе» при записи в `data` | Распакуйте проект в свою папку пользователя (например, `%USERPROFILE%\Bogusa_website`) или задайте `DATA_DIR` в `.env` |
+| Нужно сбросить всё и начать заново | `.\start.ps1 -Reset` (или удалите папку `data` и запустите снова) |
+
+> Брандмауэр Windows может спросить разрешение для `node.exe` при первом запуске —
+> достаточно разрешить доступ в частных сетях (сервер слушает порт на вашем компьютере).
 
 ---
 

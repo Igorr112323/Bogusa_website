@@ -14,7 +14,9 @@
     "seed": "node server/seed.js",
     "reset": "node server/seed.js --force",
     "test": "node --test --test-reporter=spec tests/*.test.js",
-    "qr": "node scripts/qr.js"
+    "qr": "node scripts/qr.js",
+    "doctor": "node scripts/doctor.js",
+    "help": "node scripts/help.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
