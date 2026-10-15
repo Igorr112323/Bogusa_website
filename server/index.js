@@ -4,8 +4,13 @@
 
 const config = require('./config');
 const app = require('./app');
-const { db, driver } = require('./db');
+const database = require('./db');
+const { db } = database;
 const { ensureAdminAccount } = require('./seed');
+
+// Информация о драйвере — видна в стартовом логе и в npm run doctor
+const driverInfo = db.info();
+const driver = driverInfo.driver;
 
 const server = app.listen(config.PORT, config.HOST, () => {
   const shownHost = config.HOST === '0.0.0.0' ? 'localhost' : config.HOST;
@@ -13,7 +18,7 @@ const server = app.listen(config.PORT, config.HOST, () => {
   console.log('  Анонимная обратная связь от студентов');
   console.log('  ────────────────────────────────────────────────');
   console.log(`  Режим:            ${config.NODE_ENV}`);
-  console.log(`  Драйвер БД:       ${driver}`);
+  console.log(`  Драйвер БД:       ${driver} ${driverInfo.driverVersion ? `(${driverInfo.driverVersion})` : ''}`);
   console.log(`  Файл БД:          ${config.DB_FILE}`);
   console.log(`  Сайт студентов:   http://${shownHost}:${config.PORT}/`);
   console.log(`  Вход (общий):     http://${shownHost}:${config.PORT}/login`);
@@ -26,10 +31,13 @@ const server = app.listen(config.PORT, config.HOST, () => {
 
   if (driver === 'node:sqlite') {
     console.log(
-      '  Примечание: Node.js 22 помечает встроенный SQLite как экспериментальный —\n' +
-        '  предупреждение выше безвредно. Установите better-sqlite3 (npm i better-sqlite3),\n' +
-        '  чтобы использовать ускоренный драйвер и убрать это сообщение.'
+      '  Примечание: используется встроенный в Node.js SQLite (экспериментальный).\n' +
+        '  Для скорости и стабильности рекомендуется: npm install better-sqlite3@^12\n' +
+        '  Проверка драйвера: npm run dbcheck'
     );
+    console.log('');
+  } else if (driverInfo.reason && driverInfo.reason.includes('не сработало')) {
+    console.log(`  ${driverInfo.reason}`);
     console.log('');
   }
 
@@ -41,18 +49,45 @@ const server = app.listen(config.PORT, config.HOST, () => {
   console.log('');
 });
 
-// Корректное завершение: закрываем БД, чтобы не терять WAL-данные.
+// Корректное завершение: закрываем БД, чтобы не терять WAL-данные
+// и не оставлять нативные объекты до разрушения окружения Node.js.
+let closing = false;
 function shutdown(signal) {
-  console.log(`\n[server] получен сигнал ${signal}, завершаем работу…`);
-  server.close(() => {
+  if (closing) return;
+  closing = true;
+  if (signal) console.log(`\n[server] получен сигнал ${signal}, завершаем работу…`);
+  try {
     db.close();
-    process.exit(0);
-  });
+  } catch {
+    /* база уже закрыта */
+  }
+  server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Страховка: если процесс завершается по любой причине, база будет закрыта корректно.
+process.on('exit', () => {
+  try {
+    db.close();
+  } catch {
+    /* ignore */
+  }
+});
+
+// Ошибки не должны превращаться в «немой» нативный краш: печатаем причину и выходим аккуратно.
+process.on('uncaughtException', (err) => {
+  console.error('\n[server] необработанная ошибка:', err && err.stack ? err.stack : err);
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(
+      `[server] порт ${config.PORT} уже занят. Закройте другое окно с сервером ` +
+        'или запустите с другим портом: PORT=8080 npm start (Windows: .\\start.ps1 -Port 8080)'
+    );
+  }
+  shutdown(null);
+});
 
 process.on('unhandledRejection', (reason) => {
   console.error('[server] необработанное отклонение промиса:', reason);

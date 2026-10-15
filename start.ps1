@@ -9,6 +9,7 @@
       1. проверяет Node.js и npm;
       2. устанавливает зависимости (npm install), если каталога node_modules нет;
       3. создаёт файл настроек .env из .env.example, если его нет;
+      3. проверяет, что драйвер базы данных работает (npm run dbcheck);
       4. создаёт базу данных с администратором и демонстрационными данными
          (только при первом запуске — существующая база не трогается);
       5. запускает сервер и печатает адреса всех ролей.
@@ -146,11 +147,17 @@ $nodeVersion = (& node -v).TrimStart('v')
 $nodeMajor = [int]($nodeVersion.Split('.')[0])
 Write-Ok "Node.js v$nodeVersion"
 
-if ($nodeMajor -lt 18) {
-    Fail "Нужен Node.js 18.18 или новее (у вас v$nodeVersion). Обновите: winget upgrade --id OpenJS.NodeJS.LTS"
-}
 if ($nodeMajor -lt 22) {
-    Write-Note 'Совет: надежнее Node.js 22 или новее — в нем есть встроенный драйвер SQLite (без компиляции).'
+    Write-Host ''
+    Write-Host "Node.js v$nodeVersion — версия слишком старая." -ForegroundColor Red
+    Write-Host 'Нужен Node.js 22 или новее: только для него есть готовые бинарники'
+    Write-Host 'драйвера базы данных (better-sqlite3 12) — компилятор не потребуется.'
+    Write-Host ''
+    Write-Host 'Обновление в одну команду:' -ForegroundColor Yellow
+    Write-Host '   winget install --exact --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements'
+    Write-Host '   (после установки закройте и снова откройте PowerShell)'
+    Write-Host ''
+    exit 1
 }
 
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -191,7 +198,31 @@ if (-not (Test-Path $envPath)) {
     Write-Step 'Файл настроек .env уже существует (оставляю без изменений)'
 }
 
-# --- 3. База данных --------------------------------------------------------
+# --- 3. Проверка драйвера базы данных --------------------------------------
+# Отдельный процесс: если нативный модуль падает, мы увидим понятное сообщение
+# вместо загадочного «Assertion failed» из недр Node.js.
+Write-Step 'Проверяю драйвер базы данных (npm run dbcheck)'
+& node scripts/dbcheck.js
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host 'Драйвер базы данных не работает.' -ForegroundColor Red
+    Write-Host 'Чаще всего причина в том, что npm не выполнил install-скрипты'
+    Write-Host 'нативных пакетов (bcrypt, better-sqlite3) — так ведут себя npm 11.19+ и 12,'
+    Write-Host 'если в package.json нет поля allowScripts.'
+    Write-Host ''
+    Write-Host 'Что сделать по шагам:' -ForegroundColor Yellow
+    Write-Host '   1. убедитесь, что Node.js версии 22 или новее:  node -v'
+    Write-Host '   2. установите драйвер с готовым бинарником:     npm install better-sqlite3@^12'
+    Write-Host '   3. если npm пишет про allowScripts — выполните: npm pkg set allowScripts.better-sqlite3=true'
+    Write-Host '   4. повторите:                                   npm run dbcheck'
+    Write-Host ''
+    Write-Host 'Подробная диагностика: npm run doctor'
+    Write-Host ''
+    exit 1
+}
+Write-Ok 'База данных и драйвер работают.'
+
+# --- 4. База данных --------------------------------------------------------
 $dbFile = Join-Path $root 'data\feedback.sqlite'
 
 if ($Reset) {
@@ -214,7 +245,7 @@ if (-not (Test-Path $dbFile)) {
     Write-Ok "Файл: $dbFile"
 }
 
-# --- 4. Запуск -------------------------------------------------------------
+# --- 5. Запуск -------------------------------------------------------------
 if ($Port -gt 0) { $env:PORT = "$Port" }
 
 # Если порт не задан параметром — берём его из .env, иначе 3000

@@ -35,7 +35,9 @@
 
 ## Быстрый старт
 
-Требования: **Node.js 18.18+** (рекомендуется 22 LTS) и npm.
+Требования: **Node.js 22 или новее** (рекомендуется 24 LTS) и npm.
+Node.js 22+ нужен, потому что только для него драйвер базы данных `better-sqlite3` 12
+поставляется готовым бинарником — компилятор на компьютере не требуется.
 
 > **Windows?** Есть готовый релиз и скрипт запуска в один шаг — см. [Установка на Windows (PowerShell)](#установка-на-windows-powershell--самый-простой-путь).
 
@@ -86,6 +88,7 @@ npm run seed     # создать администратора и демо-ст�
 npm run reset    # ПОЛНЫЙ СБРОС: удалить файл БД и создать заново
 npm run qr       # напечатать QR-код со ссылкой на анкету в терминале
 npm run doctor   # проверить окружение: Node.js, драйвер БД, порт, состояние базы
+npm run dbcheck  # отдельно проверить базу данных (запись, чтение, транзакции)
 npm run help     # шпаргалка по всем командам
 ```
 
@@ -112,16 +115,16 @@ node -v
 # 2) скачать архив релиза во временную папку
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$zip = "$env:TEMP\bogusa-feedback-v1.0.1.zip"
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.1.zip' -OutFile $zip
+$zip = "$env:TEMP\bogusa-feedback-v1.0.2.zip"
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.2.zip' -OutFile $zip
 
-# 3) распаковать в свою папку (внутри появится Bogusa_website-1.0.1)
+# 3) распаковать в свою папку (внутри появится Bogusa_website-1.0.2)
 $dst = "$env:USERPROFILE\Bogusa_website"
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 Expand-Archive -Path $zip -DestinationPath $dst -Force
 
 # 4) установить и запустить
-cd "$dst\Bogusa_website-1.0.1"
+cd "$dst\Bogusa_website-1.0.2"
 .\start.ps1
 ```
 
@@ -142,7 +145,7 @@ winget install --exact --id OpenJS.NodeJS.LTS
 ```
 
 Скачать можно и вручную: страница [Releases](https://github.com/Igorr112323/Bogusa_website/releases) →
-у версии **v1.0.1** ссылка **Source code (zip)**.
+у версии **v1.0.2** ссылка **Source code (zip)**.
 
 Скрипт `start.ps1` сам: проверит Node.js, выполнит `npm install`, создаст `.env`,
 инициализирует базу с администратором и демо-данными и запустит сервер.
@@ -200,9 +203,9 @@ npm run help        # шпаргалка по всем командам
 ```powershell
 # 1) скачать архив новой версии и распаковать в отдельную папку
 $ProgressPreference = 'SilentlyContinue'
-Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.1.zip' -OutFile "$env:TEMP\update.zip"
+Invoke-WebRequest 'https://github.com/Igorr112323/Bogusa_website/archive/refs/tags/v1.0.2.zip' -OutFile "$env:TEMP\update.zip"
 Expand-Archive "$env:TEMP\update.zip" -DestinationPath "$env:USERPROFILE\Bogusa_new" -Force
-$old = "$env:USERPROFILE\Bogusa_website\Bogusa_website-1.0.1"     # текущая версия
+$old = "$env:USERPROFILE\Bogusa_website\Bogusa_website-1.0.2"     # текущая версия
 $new = Get-ChildItem "$env:USERPROFILE\Bogusa_new" -Directory | Select-Object -First 1   # новая версия
 
 # 2) перенести свою базу и настройки
@@ -224,7 +227,9 @@ cd $new.FullName
 | `npm : Имя "npm" не распознано`, «Node.js не найден» | Поставьте Node.js: `winget install --exact --id OpenJS.NodeJS.LTS`, затем закройте и заново откройте PowerShell. Либо запустите `.\start.ps1 -InstallNode` — скрипт установит Node.js сам |
 | «выполнение сценариев отключено» | Запустите `powershell -ExecutionPolicy Bypass -File .\start.ps1` или используйте `start.cmd` |
 | Долго скачивается архив | Добавьте `$ProgressPreference = 'SilentlyContinue'` (см. блок выше) или скачайте zip вручную со страницы релизов |
-| `npm install` ругается на `bcrypt`/`better-sqlite3` | Это опциональные пакеты: сервис работает и без них (пароли — scrypt, база — встроенный SQLite). Проверьте командой `npm run doctor` |
+| При `npm install` появилось предупреждение `install scripts ... not yet covered by allowScripts` | Так ведут себя npm 11.19+ и 12: без явного разрешения install-скрипты нативных пакетов не выполняются. В проекте уже есть поле `allowScripts`, поэтому достаточно удалить `node_modules` и выполнить `npm install` заново |
+| `npm start` сразу падает с `Assertion failed: (env) != nullptr` (в тексте видно `node::RemoveEnvironmentCleanupHook`) | Сервер не смог загрузить нативный драйвер и упал на встроенном SQLite этой сборки Node.js. Лечение: `npm run dbcheck`, затем `npm install better-sqlite3@^12`, снова `npm start`. Проверьте также, что Node.js 22 или новее (`node -v`) |
+| `npm install` не может собрать `bcrypt`/`better-sqlite3` | Это опциональные пакеты: сервис работает и без них (пароли — scrypt, база — встроенный SQLite в Node 22+). Но для стабильности лучше поставить готовый бинарник: `npm install better-sqlite3@^12`. Диагностика: `npm run doctor` |
 | Порт занят (`EADDRINUSE`) | Запустите на другом порту: `.\start.ps1 -Port 8080` либо закройте прошлое окно сервера |
 | «Отказано в доступе» при записи в `data` | Распакуйте проект в свою папку пользователя (например, `%USERPROFILE%\Bogusa_website`) или задайте `DATA_DIR` в `.env` |
 | Нужно сбросить всё и начать заново | `.\start.ps1 -Reset` (или удалите папку `data` и запустите снова) |
@@ -613,14 +618,53 @@ docker logs feedback   # здесь будет напечатан логин а�
 ## Частые вопросы и решения проблем
 
 **В консоли предупреждение `ExperimentalWarning: SQLite is an experimental feature`.**
-Это Node.js 22 сообщает о встроенном модуле `node:sqlite`. Работать можно, ничего не сломается.
-Установите `npm install better-sqlite3` — приложение автоматически переключится на быстрый
-нативный драйвер, и предупреждение исчезнет.
+Это Node.js сообщает о встроенном модуле `node:sqlite` — значит, используется запасной драйвер.
+Приложение работает, но лучше переключиться на нативный: `npm install better-sqlite3@^12`
+(готовый бинарник, компилятор не нужен). Переключение автоматическое, проверить можно
+командой `npm run dbcheck`.
 
-**`npm install` не смог собрать `bcrypt` или `better-sqlite3`.**
-Эти пакеты объявлены как опциональные, поэтому установка не падает: пароли хешируются встроенным
-`scrypt`, а база работает на `node:sqlite` (Node 22+). Для ускоренного драйвера установите
-`better-sqlite3` отдельно на машине с компилятором (`build-essential`, `python3`).
+**`npm install` пишет `install scripts ... not yet covered by allowScripts` и не собирает
+`bcrypt`/`better-sqlite3`.**
+Начиная с npm 11.19 (в npm 12 — жёстко) скрипты установки зависимостей не выполняются, пока они
+не перечислены в поле `allowScripts` файла `package.json`. В проекте оно есть:
+
+```json
+"allowScripts": { "bcrypt": true, "better-sqlite3": true }
+```
+
+Если папка `node_modules` осталась с прошлого запуска, выполните заново:
+
+```powershell
+Remove-Item -Recurse -Force node_modules
+npm install
+npm run dbcheck
+```
+
+Принудительно разрешить установку конкретного пакета можно и командой
+`npm pkg set allowScripts.better-sqlite3=true`.
+
+**`npm start` падает с `Assertion failed: (env) != nullptr`.**
+Этот сбой возникает, когда сервер уходит на встроенный `node:sqlite`, а он в вашей сборке Node.js
+неисправен (известная беда Node.js 24.20 на Windows при повреждённом драйвере). Симптом: консоль
+печатает стек с `node::RemoveEnvironmentCleanupHook` вместо строки «Сервер запущен».
+Порядок действий:
+
+```powershell
+node -v                              # нужна версия 22 или новее
+npm run dbcheck                      # покажет, какой драйвер базы данных выбран
+npm install better-sqlite3@^12       # готовый бинарник под Node 22/24/25/26
+npm run dbcheck                      # должно быть [ok] ... better-sqlite3
+npm start
+```
+
+В версии **v1.0.2** и новее этот сценарий закрыт: `better-sqlite3` объявлен версии `^12.11.1`
+(есть готовый бинарник для Node 24), а install-скрипты разрешены полем `allowScripts`.
+Скрипт `start.ps1` проверяет драйвер до старта сервера — вместо нативного падения вы увидите
+понятное сообщение с командами.
+
+**Как понять, какой драйвер базы данных используется?**
+`npm run dbcheck` — печатает выбранный драйвер, версию и причину выбора. Принудительно выбрать
+можно переменной окружения: `DB_DRIVER=better-sqlite3` (или `DB_DRIVER=node:sqlite`) в `.env`.
 
 **Преподаватель не видит свою дисциплину.**
 Проверьте в админке: у дисциплины должен быть указан преподаватель, а у дисциплины — хотя бы одна

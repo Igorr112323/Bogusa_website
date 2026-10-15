@@ -2,7 +2,7 @@
 
 /**
  * Проверка окружения: запускается командой `npm run doctor`.
- * Показывает версию Node.js, доступный драйвер БД, алгоритм хеширования паролей,
+ * Показывает версию Node.js, выбранный драйвер БД, алгоритм хеширования паролей,
  * состояние базы данных и свободен ли порт. Это первое, что стоит запустить,
  * если сервер не стартует.
  */
@@ -12,9 +12,15 @@ const net = require('net');
 const path = require('path');
 
 const lines = [];
+let hasFailure = false;
+
 const good = (text) => lines.push(`  [ok]   ${text}`);
 const warn = (text) => lines.push(`  [warn] ${text}`);
-const bad = (text) => lines.push(`  [FAIL] ${text}`);
+const bad = (text) => {
+  hasFailure = true;
+  lines.push(`  [FAIL] ${text}`);
+};
+const info = (text) => lines.push(`         ${text}`);
 
 lines.push('');
 lines.push('  Диагностика окружения');
@@ -23,11 +29,13 @@ lines.push('  ──────────────────────
 /* --- Node.js --- */
 const nodeVersion = process.versions.node;
 const major = Number(nodeVersion.split('.')[0]);
-if (major >= 20) good(`Node.js v${nodeVersion}`);
-else if (major >= 18) warn(`Node.js v${nodeVersion} — работает, но рекомендуется 20 или 22 LTS`);
-else bad(`Node.js v${nodeVersion} — нужен 18.18 или новее: https://nodejs.org/`);
+if (major >= 22) good(`Node.js v${nodeVersion}`);
+else bad(`Node.js v${nodeVersion} — нужен 22 или новее: https://nodejs.org/  (winget install --exact --id OpenJS.NodeJS.LTS)`);
 
-good(`Платформа: ${process.platform} / ${process.arch}`);
+good(`Платформа: ${process.platform} / ${process.arch}, ABI модулей: ${process.versions.modules}`);
+if (process.platform === 'win32' && major === 24) {
+  info('Node.js 24 на Windows: используйте better-sqlite3 12+ (готовые бинарники) — см. ниже.');
+}
 
 /* --- Настройки --- */
 const config = require('../server/config');
@@ -37,23 +45,26 @@ if (config.JWT_SECRET && config.JWT_SECRET.length >= 32) good('Секрет JWT 
 else warn('Секрет JWT не задан явно — он сгенерирован и сохранён в data/jwt.secret');
 
 /* --- Драйвер базы данных --- */
-let driverInfo = 'нет';
+const driverRequested = String(process.env.DB_DRIVER || '').trim();
+if (driverRequested) info(`DB_DRIVER задан вручную: ${driverRequested}`);
+
+let betterSqlite = null;
 try {
-  require('better-sqlite3');
-  driverInfo = 'better-sqlite3 (быстрый нативный драйвер)';
-  good(`SQLite: ${driverInfo}`);
-} catch {
-  try {
-    require('node:sqlite');
-    driverInfo = 'node:sqlite (встроенный в Node.js)';
-    good(`SQLite: ${driverInfo}`);
-    warn('Для ускорения можно установить: npm install better-sqlite3');
-  } catch {
-    driverInfo = 'нет';
-    bad('Не найден ни один драйвер SQLite.');
-    lines.push('         Установите better-sqlite3 (npm install better-sqlite3)');
-    lines.push('         или используйте Node.js 22 LTS и новее — там есть встроенный node:sqlite.');
+  const pkgFile = require.resolve('better-sqlite3/package.json');
+  betterSqlite = require(pkgFile).version;
+  good(`Пакет better-sqlite3 установлен (v${betterSqlite})`);
+  const binary = path.join(path.dirname(pkgFile), 'build', 'Release', 'better_sqlite3.node');
+  if (fs.existsSync(binary)) good('Нативный бинарник better-sqlite3 на месте');
+  else {
+    warn('Каталог build/Release с бинарником не найден — вероятно, install-скрипт пакета не выполнялся.');
+    info('Исправление: npm rebuild better-sqlite3   (или переустановите: npm install better-sqlite3@^12)');
+    info('Причина обычно в npm 11.19+/12: он не запускает install-скрипты без allowScripts.');
+    info('В package.json должно быть: "allowScripts": { "better-sqlite3": true, "bcrypt": true }');
   }
+} catch {
+  warn('Пакет better-sqlite3 не установлен или не загружается.');
+  info('Он даёт готовые бинарники и самый быстрый доступ к базе.');
+  info('Установка: npm install better-sqlite3@^12');
 }
 
 /* --- Хеширование паролей --- */
@@ -61,21 +72,34 @@ const passwordHash = require('../server/passwordHash');
 if (passwordHash.algorithm === 'bcrypt') {
   good('Пароли: bcrypt, cost 12');
 } else {
-  warn('Пакет bcrypt недоступен — используется встроенный scrypt (N=16384). Работает безопасно,');
-  lines.push('         но если нужен именно bcrypt: npm install bcrypt');
+  warn('Пакет bcrypt не загружается — используется встроенный scrypt (N=16384).');
+  info('Это безопасная замена, но если нужен именно bcrypt: npm install bcrypt');
+  info('Напоминание: npm 11.19+/12 требует allowScripts для установки bcrypt.');
 }
 
 /* --- База данных --- */
+let db = null;
 try {
-  const { db, get, all } = require('../server/db');
+  const database = require('../server/db');
+  db = database.db;
+  const driverInfo = db.info();
+
+  good(`База данных открыта: драйвер ${driverInfo.driver} (${driverInfo.driverVersion})`);
+  info(driverInfo.reason);
+  if (!driverInfo.statementsCached) info('Выражения не кэшируются (безопасный режим для этого драйвера).');
+
+  const { get, all } = database;
   const tables = all("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").map((r) => r.name);
-  good(`База данных открыта: ${config.DB_FILE}`);
   good(`Таблиц: ${tables.length}`);
+
+  // Реальная проверка записи и транзакции
+  const probe = get('SELECT COUNT(*) AS n FROM users').n;
+  good(`Чтение работает (пользователей: ${probe})`);
 
   const counts = {
     admin: get("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").n,
     teachers: get("SELECT COUNT(*) AS n FROM users WHERE role = 'teacher'").n,
-    disciplines: get("SELECT COUNT(*) AS n FROM disciplines").n,
+    disciplines: get('SELECT COUNT(*) AS n FROM disciplines').n,
     topics: get('SELECT COUNT(*) AS n FROM topics').n,
     responses: get('SELECT COUNT(*) AS n FROM responses').n,
   };
@@ -85,7 +109,7 @@ try {
 
   good(`Преподавателей: ${counts.teachers}, дисциплин: ${counts.disciplines}, тем: ${counts.topics}`);
   if (counts.responses > 0) good(`Собранных анкет: ${counts.responses}`);
-  else lines.push('  [i]    Анкет пока нет. Для демо-данных: npm run seed -- --demo');
+  else info('Анкет пока нет. Для демо-данных: npm run seed -- --demo');
 
   const publicDisciplines = get(
     'SELECT COUNT(*) AS n FROM disciplines d WHERE d.is_active = 1 AND EXISTS (SELECT 1 FROM topics t WHERE t.discipline_id = d.id AND t.is_active = 1)'
@@ -95,9 +119,14 @@ try {
   } else {
     good(`Дисциплин, открытых для студентов: ${publicDisciplines}`);
   }
-  db.close();
+
+  const journal = get('PRAGMA journal_mode');
+  const journalMode = String(journal.journal_mode || '').toLowerCase();
+  if (journalMode === 'wal') good('Режим журнала WAL');
+  else warn(`Режим журнала: ${journalMode}`);
 } catch (err) {
   bad(`Не удалось открыть базу данных: ${err.message}`);
+  info('Запустите отдельную проверку: npm run dbcheck');
 }
 
 /* --- Права на запись --- */
@@ -116,7 +145,7 @@ const server = net.createServer();
 server.once('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     warn(`Порт ${port} уже занят — возможно, сервер уже запущен: http://localhost:${port}/`);
-    lines.push('         Освободить порт: закройте другое окно с сервером или запустите с другим PORT.');
+    info('Освободить порт: закройте другое окно с сервером или запустите с другим PORT.');
   } else {
     warn(`Не удалось проверить порт ${port}: ${err.message}`);
   }
@@ -131,12 +160,19 @@ server.once('listening', () => {
 server.listen(port, '0.0.0.0');
 
 function finish() {
+  try {
+    if (db) db.close();
+  } catch {
+    /* ignore */
+  }
   lines.push('  ────────────────────────────────────────────────');
-  if (lines.some((line) => line.includes('[FAIL]'))) {
+  if (hasFailure) {
     lines.push('  Есть проблемы — см. сообщения [FAIL] выше.');
+    lines.push('  Подробная проверка базы: npm run dbcheck');
   } else {
-    lines.push('  Всё готово. Запуск сервера: npm start  (или .\\start.ps1 в Windows)');
+    lines.push('  Готово. Запуск сервера: npm start  (Windows: .\\start.ps1)');
   }
   lines.push('');
   console.log(lines.join('\n'));
+  process.exitCode = hasFailure ? 1 : 0;
 }
