@@ -1019,11 +1019,6 @@ a:hover {
 /* Mobile-first: 1 колонка, 2 от 560px, 4 от 720px. Белая дверь при наведении
    заливается янтарным, текст становится белым. */
 
-.page-intro {
-  color: var(--text-soft);
-  max-width: 62ch;
-}
-
 .discipline-list {
   display: grid;
   gap: var(--space-4);

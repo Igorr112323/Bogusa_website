@@ -442,11 +442,38 @@ test('убранные блоки не возвращаются', () => {
     assert.ok(!read(file).includes('анонимная обратная связь студентов'), `${file}: подзаголовка в шапке нет`);
   }
 
+  const landingHtml = read('public/index.html');
+  assert.ok(!landingHtml.includes('page-intro'), 'вводного абзаца на главной нет');
+  assert.ok(!landingHtml.includes('Выберите дисциплину и анкету'), 'подсказки на главной нет');
+  assert.ok(!read('public/js/landing.js').includes('Анкетирование пока не открыто'),
+    'при пустой базе главная остаётся пустой, служебных надписей нет');
+
   const { FORMS } = require('../server/questions');
   for (const form of Object.values(FORMS)) {
     for (const section of form.sections) {
       assert.ok(!/необязательно, но желательно/.test(section.title), `${form.key}: хвост в заголовке блока`);
     }
+  }
+});
+
+test('о нужности сидинга судят по содержимому базы, а не по наличию файла', () => {
+  const { execFileSync } = require('node:child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bogusa-needs-seed-'));
+  const dbFile = path.join(dir, 'fresh.sqlite');
+  try {
+    const out = execFileSync(
+      process.execPath,
+      ['--no-warnings', path.join(ROOT, 'scripts/needs-seed.js')],
+      { env: { ...process.env, DATA_DIR: dir, DB_FILE: dbFile }, encoding: 'utf8' }
+    );
+    assert.equal(out.trim().split('\n').pop(), 'empty', 'пустая база должна быть распознана');
+    assert.ok(!fs.existsSync(dbFile), 'проверка не имеет права создавать файл базы');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  for (const file of ['start.ps1', 'start.sh']) {
+    assert.ok(read(file).includes('needs-seed'), `${file}: решение о сидинге берётся из needs-seed.js`);
   }
 });
 

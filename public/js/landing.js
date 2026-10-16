@@ -75,11 +75,6 @@ async function init() {
     return;
   }
 
-  if (disciplines.length === 0) {
-    mount(statusNode, el('p', { class: 'muted', text: 'Анкетирование пока не открыто.' }));
-    return;
-  }
-
   mount(listNode, disciplines.map((discipline) => disciplineCard(discipline, showTeacher)));
 }
 
