@@ -6,8 +6,8 @@
   "start_url": "/form.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f6f7fb",
-  "theme_color": "#2f4f70",
+  "background_color": "#f7f6f3",
+  "theme_color": "#4550a8",
   "icons": [
     {
       "src": "/favicon.svg",

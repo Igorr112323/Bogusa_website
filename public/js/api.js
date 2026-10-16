@@ -2,14 +2,14 @@
  * Общие утилиты фронтенда.
  *
  * Безопасность: весь пользовательский контент выводится через textContent
- * (утилита el/или document.createTextNode), innerHTML нигде не используется —
+ * (утилита el/или document.createTextNode), innerHTML нигде не используется -
  * поэтому HTML-инъекция невозможна даже без серверного экранирования.
  */
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 /**
- * Токен сессии. Основной механизм — httpOnly-cookie, поэтому в обычной ситуации
+ * Токен сессии. Основной механизм - httpOnly-cookie, поэтому в обычной ситуации
  * токен вообще не нужен. Он используется только как запасной вариант для панелей
  * (портал/админка), когда браузер блокирует cookie в iframe: хранится в
  * sessionStorage текущей вкладки и удаляется при выходе.
@@ -25,7 +25,7 @@ export function setToken(token, { persist = false } = {}) {
     if (authToken) sessionStorage.setItem(TOKEN_KEY, authToken);
     else sessionStorage.removeItem(TOKEN_KEY);
   } catch {
-    /* приватный режим — работаем только с cookie */
+    /* приватный режим - работаем только с cookie */
   }
 }
 
@@ -112,7 +112,7 @@ export const api = {
 
 /**
  * Сайт студентов работает на своём порту (PORT), а панели преподавателя и
- * администратора — на STAFF_PORT. Ссылки и QR-коды для студентов всегда
+ * администратора - на STAFF_PORT. Ссылки и QR-коды для студентов всегда
  * строятся от студенческого адреса: его сообщает сервер в /api/meta.
  */
 let studentBase = '';
@@ -147,7 +147,7 @@ export function studentUrl(path = '/', params = null) {
  * Создание элемента. Текст всегда добавляется как текстовый узел.
  *
  * @param {string} tag
- * @param {object} props — class, text, html? (нет), attrs, dataset, on, style (объект CSS-свойств)
+ * @param {object} props - class, text, html? (нет), attrs, dataset, on, style (объект CSS-свойств)
  * @param {Array|Node|string} children
  */
 export function el(tag, props = {}, children = []) {
@@ -222,21 +222,21 @@ const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
 });
 
 export function fmtDate(value) {
-  if (!value) return '—';
+  if (!value) return '-';
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return dateFormatter.format(date);
 }
 
 export function fmtShortDate(value) {
-  if (!value) return '—';
+  if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return shortDateFormatter.format(date);
 }
 
 export function fmtDateTime(value) {
-  if (!value) return '—';
+  if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return dateTimeFormatter.format(date);
@@ -244,7 +244,7 @@ export function fmtDateTime(value) {
 
 export const fmtNum = (value, digits = 2) =>
   value === null || value === undefined || Number.isNaN(Number(value))
-    ? '—'
+    ? '-'
     : Number(value).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
 export const plural = (n, one, few, many) => {
@@ -405,11 +405,11 @@ export function confirmDialog({ title, message, confirmLabel = 'Подтверд
 }
 
 export const COLORS = {
-  brand: '#3f6288',
-  brandDark: '#2f4f70',
-  accent: '#3f7a6f',
-  muted: '#94a3b8',
-  ok: '#17803d',
-  warn: '#b45309',
-  danger: '#b91c1c',
+  brand: '#4550a8',
+  brandDark: '#38418a',
+  accent: '#d97706',
+  muted: '#9b988f',
+  ok: '#4a7c59',
+  warn: '#a8702a',
+  danger: '#a8484a',
 };

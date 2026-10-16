@@ -1,4 +1,4 @@
-/** Мини-графики на чистом SVG/DOM — без внешних библиотек и без innerHTML. */
+/** Мини-графики на чистом SVG/DOM - без внешних библиотек и без innerHTML. */
 
 import { el, fmtShortDate } from './api.js';
 
@@ -42,7 +42,7 @@ export function distributionBars(distribution, total) {
 }
 
 /**
- * Линейный график: столбцы — число ответов, линия — средний балл.
+ * Линейный график: столбцы - число ответов, линия - средний балл.
  * @param {Array<{date:string, responses:number, avg:number}>} points
  */
 export function timelineChart(points) {
@@ -97,14 +97,14 @@ export function timelineChart(points) {
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${(padding.left + index * step).toFixed(1)} ${avgY(point.avg).toFixed(1)}`)
     .join(' ');
 
-  root.append(svg('path', { d: pathData, fill: 'none', stroke: '#2f4f70', 'stroke-width': '2.5', 'stroke-linejoin': 'round' }));
+  root.append(svg('path', { d: pathData, fill: 'none', stroke: '#4550a8', 'stroke-width': '2.5', 'stroke-linejoin': 'round' }));
   points.forEach((point, index) => {
     root.append(
       svg('circle', {
         cx: padding.left + index * step,
         cy: avgY(point.avg),
         r: 3,
-        fill: '#2f4f70',
+        fill: '#4550a8',
       })
     );
   });
@@ -141,13 +141,13 @@ export function timelineChart(points) {
   return el('div', {}, [
     root,
     el('div', { class: 'chart-legend' }, [
-      el('span', {}, [el('i', { class: 'legend-dot brand' }), 'средний балл (1–5)']),
+      el('span', {}, [el('i', { class: 'legend-dot brand' }), 'средний балл (1-5)']),
       el('span', {}, [el('i', { class: 'legend-dot', style: { background: '#b9c8da' } }), 'количество анкет за день']),
     ]),
   ]);
 }
 
-/** Компактная полоса «доля положительных ответов» 0..100%. */
+/** Компактная полоса "доля положительных ответов" 0..100%. */
 export function positiveBar(percent) {
   const value = Math.max(0, Math.min(100, Number(percent) || 0));
   return el('div', { class: 'bar-line' }, [
