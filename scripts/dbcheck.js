@@ -46,9 +46,14 @@ try {
   console.log('');
   process.exit(1);
 }
-if (useTemp) {
+// Рабочей базы ещё нет - проверяем на временном файле. Иначе открытие базы
+// создало бы data/feedback.sqlite, и start.ps1 решил бы, что база уже есть.
+let tempCheck = useTemp;
+if (!useTemp && !fs.existsSync(dbFile)) tempCheck = true;
+if (tempCheck) {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bogusa-dbcheck-'));
   dbFile = path.join(tempDir, 'check.sqlite');
+  if (!quiet) console.log('  [info] рабочей базы ещё нет - проверка на временном файле');
 }
 
 const startedAt = Date.now();
@@ -110,7 +115,7 @@ try {
 
   // Уборка за собой
   db.exec('DROP TABLE IF EXISTS _dbcheck;');
-  if (useTemp) db.exec('VACUUM;');
+  if (tempCheck) db.exec('VACUUM;');
 
   ok(`Файл базы: ${dbFile}`);
   console.log('  ────────────────────────────────────────────────');
