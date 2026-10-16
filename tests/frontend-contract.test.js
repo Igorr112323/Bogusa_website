@@ -7,8 +7,10 @@
  *  3. студенческие скрипты не пишут ничего в localStorage/sessionStorage;
  *  4. API отдаёт поля, которые использует интерфейс;
  *  5. CSP-совместимость: в HTML нет inline-скриптов и обработчиков on*;
- *  6. студенческие страницы: только выпадающие списки, без эмодзи и без
- *     упоминаний входа, портала и админ-панели.
+ *  6. главная студента: плитки-"двери" вместо выпадающих списков, анкета - со
+ *     списками дисциплины и темы; без эмодзи, длинных тире и кавычек-"ёлочек";
+ *  7. дизайн-токены и решения итераций 4-6 (палитра, радиусы, двери, адаптив);
+ *  8. блоки, от которых отказались, не возвращаются на страницы.
  */
 
 const test = require('node:test');
@@ -192,11 +194,12 @@ test('GET /api/meta отдаёт формы с полями, которые ис
   }
 });
 
-test('структура анкеты содержит scale_words — их рисует form.js', async () => {
+test('scale_words отдаются API, но интерфейс их не рисует', async () => {
   const res = await call('GET', '/api/forms/lesson');
   assert.equal(res.status, 200);
-  assert.ok(res.json.scale_words, 'нужны короткие подписи шкалы');
+  assert.ok(res.json.scale_words, 'поле scale_words осталось в ответе API');
   assert.equal(Object.keys(res.json.scale_words).length, 5);
+  assert.ok(!read('public/js/form.js').includes('scale-word'), 'подписей под цифрами шкалы в интерфейсе нет');
   for (const section of res.json.sections) {
     assert.ok(section.title);
     for (const question of section.questions) {
@@ -329,17 +332,122 @@ test('в студенческих страницах нет эмодзи, поя
   }
 });
 
-test('студент выбирает дисциплину и тему только из выпадающих списков', async () => {
+test('главная студента: две плитки-двери на дисциплину, без выпадающих списков', async () => {
+  const landing = await call('GET', '/');
+  assert.equal(landing.status, 200);
+  assert.ok(landing.text.includes('id="disciplines"'), 'на главной есть контейнер списка дисциплин');
+  assert.ok(!landing.text.includes('<select'), 'на главной студента нет выпадающих списков');
+  assert.ok(!landing.text.includes('type="search"'), 'поиска с ручным вводом на главной нет');
+  assert.ok(!landing.text.includes('site-header'), 'на главной студента нет шапки');
+
+  const script = read('public/js/landing.js');
+  for (const label of ['Оценить занятие', 'Оценить дисциплину']) {
+    assert.ok(script.includes(label), `на плитке должно быть: ${label}`);
+  }
+  assert.ok(script.includes("'lesson'"), 'плитка занятия ведёт в анкету lesson');
+  assert.ok(script.includes("'final'"), 'плитка дисциплины ведёт в анкету final');
+  assert.ok(script.includes('door-accent'), 'плитка занятия - янтарная');
+  assert.ok(!script.includes('12 пунктов'), 'подсказок про число пунктов на плитках нет');
+  assert.ok(!script.includes('discipline-select'), 'селекта на главной нет и в скрипте');
+});
+
+test('анкета студента: выбор дисциплины и темы остается в выпадающих списках', async () => {
   const form = await call('GET', '/form.html');
   assert.equal(form.status, 200);
   assert.ok(form.text.includes('<select'), 'на странице анкеты есть выпадающие списки');
   assert.ok(form.text.includes('id="discipline-select"'), 'есть список дисциплин');
   assert.ok(form.text.includes('id="topic-select"'), 'есть список тем занятия');
   assert.ok(!/<input(?![^>]*type="hidden")[^>]*type="(text|search)"/i.test(form.text), 'ручного ввода нет');
+});
 
-  const landing = await call('GET', '/');
-  assert.ok(landing.text.includes('id="discipline-select"'), 'на главной также только список дисциплин');
-  assert.ok(!landing.text.includes('type="search"'), 'поиска с ручным вводом на главной нет');
+/* ------------------------- дизайн-система и отказ от блоков ------------------------- */
+
+const FRONTEND_FILES = [
+  ...[
+    'public/index.html',
+    'public/form.html',
+    'public/login.html',
+    'public/portal/index.html',
+    'public/admin/index.html',
+    'public/404.html',
+    'public/css/styles.css',
+    'public/css/dashboard.css',
+  ],
+  ...fs.readdirSync(path.join(PUBLIC_DIR, 'js')).map((f) => `public/js/${f}`),
+];
+
+test('во фронтенде нет em-dash, en-dash и кавычек-ёлочек', () => {
+  for (const file of FRONTEND_FILES) {
+    const source = read(file);
+    assert.ok(!/[\u2014\u2013]/.test(source), `${file}: вместо — и – используйте дефис -`);
+    assert.ok(!/[\u00ab\u00bb]/.test(source), `${file}: вместо кавычек-ёлочек используйте " "`);
+  }
+});
+
+test('дизайн-токены: тёплый индиго, янтарь, бежевые поверхности, радиусы 8/12/18', () => {
+  const tokens = read('public/css/styles.css');
+  for (const [name, value] of [
+    ['--brand-700', '#4550a8'],
+    ['--accent-500', '#d97706'],
+    ['--bg', '#f7f6f3'],
+    ['--surface-2', '#f1efe9'],
+    ['--border', '#e6e3da'],
+    ['--text', '#1a1a23'],
+    ['--radius-sm', '8px'],
+    ['--radius', '12px'],
+    ['--radius-lg', '18px'],
+  ]) {
+    assert.ok(tokens.includes(`${name}: ${value};`), `${name} должен быть ${value}`);
+  }
+  assert.ok(!/linear-gradient\(1[34][05]deg/.test(tokens), 'градиентных шапок и карточек нет');
+  assert.ok(/'Inter'/.test(tokens), 'в шрифтовом стеке есть Inter');
+});
+
+test('адаптив mobile-first: 1 колонка, 2 от 560px, 4 от 720px, таблицы со скроллом', () => {
+  const styles = read('public/css/styles.css');
+  const dash = read('public/css/dashboard.css');
+  assert.match(styles, /@media \(min-width: 560px\)/);
+  assert.match(styles, /@media \(min-width: 720px\)/);
+  assert.match(styles, /\.doors \{[\s\S]*?grid-template-columns: 1fr;/);
+  assert.match(dash, /@media \(max-width: 520px\)/, 'компактная шапка кабинетов на мобильном');
+  assert.match(dash, /\.table-wrap \{\n  overflow-x: auto;/, 'таблицы скроллятся по горизонтали');
+  assert.match(styles, /\.btn \{[\s\S]*?min-height: 44px;/, 'тач-таргет кнопок не меньше 44px');
+  assert.match(styles, /\.door \{[\s\S]*?min-height: 76px;/, 'двери крупные, по всей ширине');
+});
+
+test('кабинет и админка: двери разделов вместо вкладок, плоская индиговая шапка', () => {
+  for (const file of ['public/portal/index.html', 'public/admin/index.html', 'public/css/dashboard.css']) {
+    assert.ok(!read(file).includes('top-tabs'), `${file}: вкладок разделов больше нет`);
+  }
+  for (const file of ['public/js/portal.js', 'public/js/admin.js']) {
+    const source = read(file);
+    assert.ok(source.includes('doorsSection'), `${file}: на главной рисуются двери разделов`);
+    assert.ok(!source.includes("mount(topTabs"), `${file}: вкладок больше нет`);
+  }
+  const dash = read('public/css/dashboard.css');
+  assert.match(dash, /\.app-shell \.site-header \{\n  background: var\(--brand-700\);/);
+  assert.match(dash, /\.doors-dashboard \.door \{\n  min-height: 92px;/);
+});
+
+test('убранные блоки не возвращаются', () => {
+  const login = read('public/login.html');
+  assert.ok(!login.includes('site-header'), 'на странице входа нет шапки');
+  assert.ok(!/bcrypt/i.test(login), 'на входе нет подсказки про bcrypt');
+  assert.ok(!login.includes('Логин и пароль выдаёт администратор'), 'пояснение про администратора убрано');
+  assert.ok(!login.includes('Студентам'), 'карточка для студентов на входе убрана');
+
+  assert.ok(!read('public/form.html').includes('form-subtitle'), 'подзаголовка анкеты нет');
+
+  for (const file of ['public/portal/index.html', 'public/admin/index.html']) {
+    assert.ok(!read(file).includes('анонимная обратная связь студентов'), `${file}: подзаголовка в шапке нет`);
+  }
+
+  const { FORMS } = require('../server/questions');
+  for (const form of Object.values(FORMS)) {
+    for (const section of form.sections) {
+      assert.ok(!/необязательно, но желательно/.test(section.title), `${form.key}: хвост в заголовке блока`);
+    }
+  }
 });
 
 test('неизвестный адрес API отвечает JSON-ошибкой, а не HTML', async () => {

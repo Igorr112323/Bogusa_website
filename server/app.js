@@ -60,7 +60,7 @@ function notFoundPage(req, res, message) {
   if (!req.path.startsWith('/api/') && req.accepts(['html', 'json']) === 'html') {
     const file = path.join(config.PUBLIC_DIR, '404.html');
     if (fs.existsSync(file)) {
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.status(404).sendFile(file);
     }
   }
@@ -127,9 +127,15 @@ function createApp(scope = 'student') {
   const staticOptions = {
     index: false,
     etag: true,
-    maxAge: config.IS_PROD ? '1h' : 0,
+    // Кеш держим выключенным: правки интерфейса должны быть видны сразу после
+    // обновления файлов (ссылки на css/js версиионные - ?v= в HTML).
+    maxAge: 0,
     setHeaders(res, filePath) {
-      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
     },
   };
 
@@ -141,7 +147,7 @@ function createApp(scope = 'student') {
       if (!fs.existsSync(file)) {
         return next(new ApiError(404, 'Раздел ещё не собран'));
       }
-      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       return res.sendFile(file);
     };
   }
