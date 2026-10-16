@@ -1,0 +1,39 @@
+{
+  "name": "bogusa-feedback",
+  "version": "1.0.3",
+  "private": true,
+  "description": "Анонимная обратная связь от студентов к преподавателю: анкеты по занятию и итоговая по дисциплине",
+  "type": "commonjs",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed": "node server/seed.js",
+    "reset": "node server/seed.js --force",
+    "test": "node --test --test-reporter=spec tests/*.test.js",
+    "qr": "node scripts/qr.js",
+    "doctor": "node scripts/doctor.js",
+    "help": "node scripts/help.js",
+    "dbcheck": "node scripts/dbcheck.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "qrcode": "^1.5.4"
+  },
+  "optionalDependencies": {
+    "bcrypt": "^6.0.0",
+    "better-sqlite3": "^12.11.1"
+  },
+  "allowScripts": {
+    "bcrypt": true,
+    "better-sqlite3": true
+  }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#2f4f70" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Анкета</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/styles.css" />
+  </head>
+  <body>
+    <main class="container container-narrow" id="main">
+      <h1 id="form-title">Анкета</h1>
+      <p class="soft" id="form-subtitle"></p>
+
+      <div class="card" id="picker">
+        <div class="field">
+          <label class="label" for="discipline-select">Дисциплина</label>
+          <select class="select" id="discipline-select"></select>
+        </div>
+        <div class="field">
+          <label class="label" for="form-select">Анкета</label>
+          <select class="select" id="form-select"></select>
+        </div>
+        <div class="field" id="topic-field">
+          <label class="label" for="topic-select">Тема занятия</label>
+          <select class="select" id="topic-select"></select>
+        </div>
+      </div>
+
+      <div id="alerts"></div>
+      <div id="survey"></div>
+    </main>
+
+    <script type="module" src="/js/form.js"></script>
+  </body>
+</html>
