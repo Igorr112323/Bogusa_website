@@ -1,0 +1,19 @@
+{
+  "name": "Анонимная обратная связь студентов",
+  "short_name": "Обратная связь",
+  "description": "Анонимные анкеты: оценка занятия и итоговая оценка дисциплины.",
+  "lang": "ru",
+  "start_url": "/form.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#2f4f70",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
