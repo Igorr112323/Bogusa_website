@@ -2,7 +2,7 @@
  * Заполнение анкеты студентом.
  *
  * Приватность: в localStorage/sessionStorage ничего не пишем, cookie не используем,
- * никаких данных о студенте не отправляем. Единственная «метка» — время начала
+ * никаких данных о студенте не отправляем. Единственная "метка" - время начала
  * заполнения, оно живёт в памяти вкладки и служит анти-бот проверкой.
  */
 
@@ -25,7 +25,6 @@ const state = {
 };
 
 const titleNode = document.querySelector('#form-title');
-const subtitleNode = document.querySelector('#form-subtitle');
 const alertsNode = document.querySelector('#alerts');
 const surveyNode = document.querySelector('#survey');
 const disciplineSelect = document.querySelector('#discipline-select');
@@ -48,12 +47,12 @@ function optionText(discipline) {
 }
 
 function topicText(topic) {
-  return topic.lesson_date ? `${topic.lesson_date} — ${topic.title}` : topic.title;
+  return topic.lesson_date ? `${topic.lesson_date}, ${topic.title}` : topic.title;
 }
 
 function fillDisciplineSelect() {
   mount(disciplineSelect, [
-    el('option', { text: '— выберите дисциплину —', attrs: { value: '' } }),
+    el('option', { text: 'выберите дисциплину', attrs: { value: '' } }),
     ...state.disciplines.map((discipline) =>
       el('option', { text: optionText(discipline), attrs: { value: String(discipline.id) } })
     ),
@@ -68,7 +67,7 @@ function fillFormSelect() {
 
 function fillTopicSelect() {
   mount(topicSelect, [
-    el('option', { text: '— выберите тему занятия —', attrs: { value: '' } }),
+    el('option', { text: 'выберите тему занятия', attrs: { value: '' } }),
     ...state.topics.map((topic) =>
       el('option', { text: topicText(topic), attrs: { value: String(topic.id) } })
     ),
@@ -110,10 +109,7 @@ function scaleQuestion(question) {
 
     scale.append(
       input,
-      el('label', { attrs: { for: inputId } }, [
-        el('span', { text: String(score) }),
-        el('span', { class: 'scale-word', text: state.form.scale_words?.[score] || '' }),
-      ])
+      el('label', { attrs: { for: inputId } }, [el('span', { text: String(score) })])
     );
   }
 
@@ -168,8 +164,6 @@ function renderSurvey() {
 
   titleNode.textContent = state.form.title;
   document.title = state.form.title;
-  subtitleNode.textContent = state.form.subtitle || '';
-  subtitleNode.hidden = !state.form.subtitle;
 
   if (!surveyReady()) {
     clear(surveyNode);

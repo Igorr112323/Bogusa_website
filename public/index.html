@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#2f4f70" />
+    <meta name="theme-color" content="#4550a8" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Анкеты по занятиям и дисциплинам</title>
     <meta
@@ -11,27 +11,20 @@
       content="Анонимные анкеты студентов: оценка проведенного занятия и итоговая оценка дисциплины."
     />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/css/styles.css" />
+    <link rel="stylesheet" href="/css/styles.css?v=1.0.6" />
   </head>
   <body>
     <main class="container container-narrow">
       <h1>Анкеты по занятиям и дисциплинам</h1>
-      <p>
-        Выберите дисциплину и заполните анкету. Опрос анонимный: фамилия, номер группы и другие
-        сведения о студенте не запрашиваются и не сохраняются.
+      <p class="page-intro">
+        Выберите дисциплину и анкету. Опрос анонимный: фамилия, номер группы и другие сведения о
+        студенте не запрашиваются и не сохраняются.
       </p>
 
-      <div class="card">
-        <div class="field">
-          <label class="label" for="discipline-select">Дисциплина</label>
-          <select class="select" id="discipline-select"></select>
-        </div>
-        <a class="btn btn-primary btn-block" id="open-form" href="/form.html">Перейти к анкете</a>
-      </div>
-
       <div id="status"></div>
+      <div class="discipline-list" id="disciplines"></div>
     </main>
 
-    <script type="module" src="/js/landing.js"></script>
+    <script type="module" src="/js/landing.js?v=1.0.6"></script>
   </body>
 </html>

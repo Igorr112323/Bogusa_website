@@ -35,15 +35,14 @@ const state = {
 const root = document.querySelector('#view-root');
 const alertsNode = document.querySelector('#view-alerts');
 const sideNav = document.querySelector('#side-nav');
-const topTabs = document.querySelector('#top-tabs');
 const userBadge = document.querySelector('#user-badge');
 const sidebarNote = document.querySelector('#sidebar-note');
 
 const VIEWS = [
   { key: 'overview', label: 'Обзор' },
-  { key: 'report', label: 'Отчёт по дисциплине' },
-  { key: 'comments', label: 'Отзывы студентов' },
-  { key: 'password', label: 'Пароль' },
+  { key: 'report', label: 'Отчёт по дисциплине', desc: 'средние баллы, распределение оценок, выгрузка CSV' },
+  { key: 'comments', label: 'Отзывы студентов', desc: 'текстовые ответы без имён и групп' },
+  { key: 'password', label: 'Пароль', desc: 'смена пароля для входа в кабинет' },
 ];
 
 /* ------------------------------ каркас ------------------------------ */
@@ -68,7 +67,6 @@ function renderNav() {
     );
 
   mount(sideNav, VIEWS.map(make));
-  mount(topTabs, VIEWS.map(make));
 }
 
 function go(view, params = {}) {
@@ -82,10 +80,45 @@ function go(view, params = {}) {
 }
 
 function pageHead(title, subtitle, actions = []) {
+  const buttons = [...actions];
+  if (state.view !== 'overview') {
+    buttons.unshift(
+      el('button', {
+        class: 'btn btn-sm btn-ghost',
+        attrs: { type: 'button' },
+        text: 'Ко всем разделам',
+        on: { click: () => go('overview') },
+      })
+    );
+  }
   return el('div', { class: 'page-head' }, [
     el('div', {}, [el('h1', { text: title }), subtitle ? el('div', { class: 'sub', text: subtitle }) : null]),
-    actions.length > 0 ? el('div', { class: 'btn-row' }, actions) : null,
+    buttons.length > 0 ? el('div', { class: 'btn-row' }, buttons) : null,
   ]);
+}
+
+/** Двери разделов вместо вкладок: вход в каждый раздел крупной плиткой. */
+function doorsSection() {
+  const list = VIEWS.filter((view) => view.key !== 'overview');
+  if (list.length === 0) return null;
+  return el(
+    'div',
+    { class: 'doors doors-dashboard' },
+    list.map((view, index) =>
+      el(
+        'button',
+        {
+          class: `door${index === 0 ? ' door-primary' : ''}`,
+          attrs: { type: 'button' },
+          on: { click: () => go(view.key) },
+        },
+        [
+          el('span', { class: 'door-title', text: view.label }),
+          view.desc ? el('span', { class: 'door-note', text: view.desc }) : null,
+        ]
+      )
+    )
+  );
 }
 
 const exportUrl = (base, filters) => {
@@ -109,7 +142,7 @@ function statCard(label, value, sub) {
 
 function scoreCell(value, count) {
   return el('td', { class: 'num' }, [
-    el('span', { class: scoreClass(value), text: value === null ? '—' : fmtNum(value, 2) }),
+    el('span', { class: scoreClass(value), text: value === null ? '-' : fmtNum(value, 2) }),
     count !== undefined ? el('span', { class: 'tiny muted', text: ` из 5 · n=${count}` }) : null,
   ]);
 }
@@ -135,7 +168,7 @@ async function renderOverview() {
         ]),
         el('td', { class: 'num', text: String(discipline.responses || 0) }),
         el('td', { class: 'num' }, [
-          el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '—' : fmtNum(discipline.avg, 2) }),
+          el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '-' : fmtNum(discipline.avg, 2) }),
         ]),
         el('td', { class: 'num' }, [
           el('button', {
@@ -159,7 +192,7 @@ async function renderOverview() {
           el('div', { text: topic.title }),
           el('div', { class: 'tiny muted', text: topic.discipline_title }),
         ]),
-        el('td', { class: 'num', text: topic.lesson_date || '—' }),
+        el('td', { class: 'num', text: topic.lesson_date || '-' }),
         el('td', { class: 'num' }, [
           el('button', {
             class: 'btn btn-sm btn-ghost',
@@ -184,10 +217,11 @@ async function renderOverview() {
           text: 'Выгрузить всё в CSV',
         }),
       ]),
+      doorsSection(),
       el('div', { class: 'stats' }, [
         statCard('Всего анкет', String(totals.responses ?? 0), `за 30 дней: ${data.timeline?.slice(-30).reduce((acc, p) => acc + p.responses, 0) ?? 0}`),
-        statCard('Средний балл', totals.overall_avg === null ? '—' : fmtNum(totals.overall_avg, 2), 'по всем пунктам шкалы'),
-        statCard('По занятиям', String(totals.lesson ?? 0), 'анкет «по занятию»'),
+        statCard('Средний балл', totals.overall_avg === null ? '-' : fmtNum(totals.overall_avg, 2), 'по всем пунктам шкалы'),
+        statCard('По занятиям', String(totals.lesson ?? 0), 'анкет "по занятию"'),
         statCard('Итоговых', String(totals.final ?? 0), 'анкет по дисциплине'),
       ]),
       el('section', { class: 'section' }, [
@@ -238,7 +272,7 @@ async function renderOverview() {
           el('h3', { text: 'Как читать отчёт' }),
           el('ul', { class: 'privacy-list small' }, [
             el('li', { text: 'Средний балл считается по всем ответам выбранного типа анкеты.' }),
-            el('li', { text: 'Комментарии показываются без имён и групп — их невозможно связать с автором.' }),
+            el('li', { text: 'Комментарии показываются без имён и групп - их невозможно связать с автором.' }),
             el('li', { text: 'Если ответов мало, результаты скрываются, чтобы нельзя было вычислить автора.' }),
           ]),
         ]),
@@ -252,7 +286,7 @@ async function renderOverview() {
       ]);
     } else {
       mount(sidebarNote, [
-        el('p', { class: 'small muted', text: 'Нужна ссылка или QR-код для студентов? Смотрите раздел «Отчёт по дисциплине».' }),
+        el('p', { class: 'small muted', text: 'Нужна ссылка или QR-код для студентов? Смотрите раздел "Отчёт по дисциплине".' }),
       ]);
     }
   } catch (error) {
@@ -405,7 +439,7 @@ async function renderReport() {
           ]),
           distributionBars(question.distribution, question.count),
           el('div', { class: 'center' }, [
-            el('div', { class: scoreClass(question.avg), text: question.avg === null ? '—' : fmtNum(question.avg, 2) }),
+            el('div', { class: scoreClass(question.avg), text: question.avg === null ? '-' : fmtNum(question.avg, 2) }),
             el('div', { class: 'tiny muted', text: `ответов: ${question.count}` }),
           ]),
         ])
@@ -472,11 +506,11 @@ async function renderReport() {
                   {},
                   report.lessons.map((lesson) =>
                     el('tr', {}, [
-                      el('td', { text: lesson.topic_title || '—' }),
-                      el('td', { class: 'num', text: lesson.lesson_date || '—' }),
+                      el('td', { text: lesson.topic_title || '-' }),
+                      el('td', { class: 'num', text: lesson.lesson_date || '-' }),
                       el('td', { class: 'num', text: String(lesson.responses) }),
                       el('td', { class: 'num' }, [
-                        el('span', { class: scoreClass(lesson.avg), text: lesson.avg === null ? '—' : fmtNum(lesson.avg, 2) }),
+                        el('span', { class: scoreClass(lesson.avg), text: lesson.avg === null ? '-' : fmtNum(lesson.avg, 2) }),
                       ]),
                       el('td', { class: 'num' }, [
                         el('button', {
@@ -528,7 +562,7 @@ async function renderReport() {
       el('div', { class: 'card card-tight' }, [
         el('div', { class: 'stats' }, [
           statCard('Всего анкет', String(report.total_responses ?? 0)),
-          statCard('Средний балл', report.overall_avg === null ? '—' : fmtNum(report.overall_avg, 2)),
+          statCard('Средний балл', report.overall_avg === null ? '-' : fmtNum(report.overall_avg, 2)),
           statCard('По занятиям', String(report.by_form?.lesson ?? 0)),
           statCard('Итоговых', String(report.by_form?.final ?? 0)),
         ]),
@@ -560,7 +594,7 @@ function linksCard() {
 
   const input = el('input', { class: 'input', attrs: { value: url, readonly: true, 'aria-label': 'Ссылка на анкету' } });
   return el('div', { class: 'card' }, [
-    el('p', { class: 'small soft', text: 'Отправьте студентам ссылку или покажите QR-код — регистрация не нужна.' }),
+    el('p', { class: 'small soft', text: 'Отправьте студентам ссылку или покажите QR-код - регистрация не нужна.' }),
     el('div', { class: 'copy-row' }, [
       input,
       el('button', {
@@ -652,7 +686,7 @@ async function renderComments() {
   formSelect.addEventListener('change', load);
 
   mount(root, [
-    pageHead('Отзывы студентов', 'Все текстовые ответы по вашим дисциплинам — без имён и групп'),
+    pageHead('Отзывы студентов', 'Все текстовые ответы по вашим дисциплинам - без имён и групп'),
     el('div', { class: 'filter-bar' }, [
       el('div', { class: 'field' }, [el('label', { text: 'Поиск' }), searchInput]),
       el('div', { class: 'field' }, [el('label', { text: 'Тип анкеты' }), formSelect]),

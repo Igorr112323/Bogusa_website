@@ -15,7 +15,7 @@ const setAlert = (message, kind = 'info') => {
   mount(alertsNode, el('div', { class: `alert alert-${kind}`, attrs: { role: 'alert' }, text: message }));
 };
 
-/** Разрешаем переходы только на внутренние адреса — защита от open redirect. */
+/** Разрешаем переходы только на внутренние адреса - защита от open redirect. */
 function safeNext(fallback) {
   const next = qsParam('next');
   if (next && next.startsWith('/') && !next.startsWith('//')) return next;
@@ -98,12 +98,12 @@ passwordForm.addEventListener('submit', async (event) => {
   }
 });
 
-/** Если пользователь уже вошёл — сразу отправляем в его панель. */
+/** Если пользователь уже вошёл - сразу отправляем в его панель. */
 (async () => {
   try {
     const { user } = await api.get('/api/auth/me');
     if (user) redirectFor(user);
   } catch {
-    /* не авторизован — показываем форму */
+    /* не авторизован - показываем форму */
   }
 })();

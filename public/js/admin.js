@@ -37,16 +37,15 @@ const state = {
 const root = document.querySelector('#view-root');
 const alertsNode = document.querySelector('#view-alerts');
 const sideNav = document.querySelector('#side-nav');
-const topTabs = document.querySelector('#top-tabs');
 const userBadge = document.querySelector('#user-badge');
 
 const VIEWS = [
   { key: 'overview', label: 'Сводка' },
-  { key: 'teachers', label: 'Преподаватели' },
-  { key: 'disciplines', label: 'Дисциплины и темы' },
-  { key: 'reports', label: 'Отчёты' },
-  { key: 'qr', label: 'QR и ссылки' },
-  { key: 'audit', label: 'Журнал действий' },
+  { key: 'teachers', label: 'Преподаватели', desc: 'аккаунты, доступы, сброс паролей' },
+  { key: 'disciplines', label: 'Дисциплины и темы', desc: 'дисциплины, темы занятий, ссылки и QR-коды' },
+  { key: 'reports', label: 'Отчёты', desc: 'сквозная агрегация по всем преподавателям' },
+  { key: 'qr', label: 'QR и ссылки', desc: 'материалы, которые отправляют группам' },
+  { key: 'audit', label: 'Журнал действий', desc: 'кто и что менял в системе' },
 ];
 
 /* ------------------------------ каркас ------------------------------ */
@@ -70,7 +69,6 @@ function renderNav() {
       view.label
     );
   mount(sideNav, VIEWS.map(make));
-  mount(topTabs, VIEWS.map(make));
 }
 
 function go(view, params = {}) {
@@ -86,10 +84,45 @@ function go(view, params = {}) {
 }
 
 function pageHead(title, subtitle, actions = []) {
+  const buttons = [...actions];
+  if (state.view !== 'overview') {
+    buttons.unshift(
+      el('button', {
+        class: 'btn btn-sm btn-ghost',
+        attrs: { type: 'button' },
+        text: 'Ко всем разделам',
+        on: { click: () => go('overview') },
+      })
+    );
+  }
   return el('div', { class: 'page-head' }, [
     el('div', {}, [el('h1', { text: title }), subtitle ? el('div', { class: 'sub', text: subtitle }) : null]),
-    actions.length > 0 ? el('div', { class: 'btn-row' }, actions) : null,
+    buttons.length > 0 ? el('div', { class: 'btn-row' }, buttons) : null,
   ]);
+}
+
+/** Двери разделов вместо вкладок: вход в каждый раздел крупной плиткой. */
+function doorsSection() {
+  const list = VIEWS.filter((view) => view.key !== 'overview');
+  if (list.length === 0) return null;
+  return el(
+    'div',
+    { class: 'doors doors-dashboard' },
+    list.map((view, index) =>
+      el(
+        'button',
+        {
+          class: `door${index === 0 ? ' door-primary' : ''}`,
+          attrs: { type: 'button' },
+          on: { click: () => go(view.key) },
+        },
+        [
+          el('span', { class: 'door-title', text: view.label }),
+          view.desc ? el('span', { class: 'door-note', text: view.desc }) : null,
+        ]
+      )
+    )
+  );
 }
 
 const statCard = (label, value, sub) =>
@@ -135,9 +168,10 @@ async function renderOverview() {
           on: { click: renderOverview },
         }),
       ]),
+      doorsSection(),
       el('div', { class: 'stats' }, [
         statCard('Всего анкет', counts.responses, `сегодня: ${data.recent.day} · за 7 дней: ${data.recent.week}`),
-        statCard('Средний балл', data.avg_overall === null ? '—' : fmtNum(data.avg_overall, 2), 'по всем дисциплинам'),
+        statCard('Средний балл', data.avg_overall === null ? '-' : fmtNum(data.avg_overall, 2), 'по всем дисциплинам'),
         statCard('Преподавателей', counts.teachers, `дисциплин: ${counts.disciplines}`),
         statCard('Комментариев', counts.comments, `тем занятий: ${counts.topics}`),
       ]),
@@ -158,10 +192,10 @@ async function renderOverview() {
                 el('div', { text: discipline.title }),
                 discipline.is_active ? null : el('span', { class: 'badge badge-warn', text: 'выключена' }),
               ]),
-              el('td', { text: discipline.teacher_name || '—' }),
+              el('td', { text: discipline.teacher_name || '-' }),
               el('td', { class: 'num', text: String(discipline.responses || 0) }),
               el('td', { class: 'num' }, [
-                el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '—' : fmtNum(discipline.avg, 2) }),
+                el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '-' : fmtNum(discipline.avg, 2) }),
               ]),
             ])
           )
@@ -215,13 +249,13 @@ function teacherFormModal({ teacher = null, onSaved }) {
 
   const passwordInput = el('input', {
     class: 'input',
-    attrs: { type: 'text', placeholder: 'оставьте пустым — сгенерируем надёжный пароль' },
+    attrs: { type: 'text', placeholder: 'оставьте пустым - сгенерируем надёжный пароль' },
   });
 
   const statusNode = el('div');
 
   const content = el('div', {}, [
-    el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Логин' }), loginInput, el('span', { class: 'hint', text: 'Латинские буквы, цифры, точка, дефис, подчёркивание. 3–32 символа.' })]),
+    el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Логин' }), loginInput, el('span', { class: 'hint', text: 'Латинские буквы, цифры, точка, дефис, подчёркивание. 3-32 символа.' })]),
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'ФИО' }), nameInput]),
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Роль' }), roleSelect]),
     !teacher ? el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Пароль' }), passwordInput]) : null,
@@ -253,7 +287,7 @@ function teacherFormModal({ teacher = null, onSaved }) {
         const data = await api.post('/api/admin/teachers', payload);
         instance.close();
         showPasswordOnce({
-          title: `Аккаунт «${payload.login}» создан`,
+          title: `Аккаунт "${payload.login}" создан`,
           password: data.password,
           note: 'Передайте пароль преподавателю надёжным способом. Второй раз он не показывается.',
           onCopy: 'Пароль скопирован',
@@ -276,7 +310,7 @@ function teacherFormModal({ teacher = null, onSaved }) {
   });
 }
 
-/** Показ пароля один раз, с кнопкой «скопировать». */
+/** Показ пароля один раз, с кнопкой "скопировать". */
 function showPasswordOnce({ title, password, note, onCopy }) {
   const box = el('div', {}, [
     el('div', { class: 'password-box' }, [
@@ -325,7 +359,7 @@ async function renderTeachers() {
         ]),
         el('td', { class: 'num', text: String(teacher.disciplines_count) }),
         el('td', { class: 'num', text: String(teacher.responses || 0) }),
-        el('td', { text: teacher.last_login_at ? fmtDateTime(teacher.last_login_at) : '—' }),
+        el('td', { text: teacher.last_login_at ? fmtDateTime(teacher.last_login_at) : '-' }),
         el('td', { class: 'num' }, [
           el('div', { class: 'row-actions' }, [
             el('button', {
@@ -342,7 +376,7 @@ async function renderTeachers() {
                 click: async () => {
                   if (!(await confirmDialog({
                     title: 'Сбросить пароль?',
-                    message: `Для «${teacher.full_name}» будет создан новый временный пароль, текущая сессия завершится.`,
+                    message: `Для "${teacher.full_name}" будет создан новый временный пароль, текущая сессия завершится.`,
                     confirmLabel: 'Сбросить',
                   }))) return;
                   try {
@@ -383,11 +417,11 @@ async function renderTeachers() {
                 click: async () => {
                   const others = state.teachers.filter((t) => t.id !== teacher.id);
                   const select = el('select', { class: 'select' }, [
-                    el('option', { text: '— оставить дисциплины без преподавателя —', attrs: { value: '' } }),
+                    el('option', { text: 'оставить дисциплины без преподавателя', attrs: { value: '' } }),
                     ...others.map((t) => el('option', { text: t.full_name, attrs: { value: String(t.id) } })),
                   ]);
                   modal({
-                    title: `Удалить «${teacher.full_name}»?`,
+                    title: `Удалить "${teacher.full_name}"?`,
                     content: el('div', {}, [
                       el('p', { class: 'soft', text: 'Действие необратимо. Аккаунт и доступ будут удалены.' }),
                       el('div', { class: 'field' }, [
@@ -435,7 +469,7 @@ async function renderTeachers() {
       ]),
       el('div', { class: 'alert' }, [
         el('strong', { text: 'Как выдать доступ: ' }),
-        'нажмите «Новый преподаватель», укажите логин и ФИО. Пароль сгенерируется и будет показан один раз — передайте его преподавателю. При первом входе он обязан сменить пароль.',
+        'нажмите "Новый преподаватель", укажите логин и ФИО. Пароль сгенерируется и будет показан один раз - передайте его преподавателю. При первом входе он обязан сменить пароль.',
       ]),
       table(
         [
@@ -462,7 +496,7 @@ function disciplineFormModal({ discipline = null, onSaved }) {
   const codeInput = el('input', { class: 'input', attrs: { value: discipline?.code || '', placeholder: 'DM-201' } });
 
   const teacherSelect = el('select', { class: 'select' }, [
-    el('option', { text: '— не назначен —', attrs: { value: '' } }),
+    el('option', { text: 'не назначен', attrs: { value: '' } }),
     ...state.teachers
       .filter((t) => t.role === 'teacher')
       .map((t) => el('option', { text: `${t.full_name} (${t.login})`, attrs: { value: String(t.id) } })),
@@ -537,13 +571,13 @@ async function renderDisciplines() {
             `${discipline.topics_count} ${plural(discipline.topics_count, 'тема', 'темы', 'тем')}`,
           ]),
         ]),
-        el('td', { text: discipline.teacher_name || (discipline.teacher_id ? '—' : 'не назначен') }),
+        el('td', { text: discipline.teacher_name || (discipline.teacher_id ? '-' : 'не назначен') }),
         el('td', {}, [
           discipline.is_active ? el('span', { class: 'badge badge-ok', text: 'открыта' }) : el('span', { class: 'badge badge-warn', text: 'выключена' }),
         ]),
         el('td', { class: 'num', text: String(discipline.responses || 0) }),
         el('td', { class: 'num' }, [
-          el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '—' : fmtNum(discipline.avg, 2) }),
+          el('span', { class: scoreClass(discipline.avg), text: discipline.avg === null ? '-' : fmtNum(discipline.avg, 2) }),
         ]),
         el('td', { class: 'num' }, [
           el('div', { class: 'row-actions' }, [
@@ -588,10 +622,10 @@ async function renderDisciplines() {
               on: {
                 click: async () => {
                   const ok = await confirmDialog({
-                    title: `Удалить «${discipline.title}»?`,
+                    title: `Удалить "${discipline.title}"?`,
                     message:
                       discipline.responses > 0
-                        ? `Вместе с дисциплиной будут удалены ${discipline.responses} анкет. Если отзывы нужны — выключите дисциплину вместо удаления.`
+                        ? `Вместе с дисциплиной будут удалены ${discipline.responses} анкет. Если отзывы нужны - выключите дисциплину вместо удаления.`
                         : 'Действие необратимо.',
                     confirmLabel: 'Удалить',
                     danger: true,
@@ -652,7 +686,7 @@ async function topicsModal({ discipline, onSaved }) {
   const bulkArea = el('textarea', {
     class: 'textarea',
     attrs: {
-      placeholder: 'По одной теме в строке. Можно указать дату через «|»: Введение | 2026-09-05',
+      placeholder: 'По одной теме в строке. Можно указать дату через "|": Введение | 2026-09-05',
       rows: '4',
     },
   });
@@ -668,7 +702,7 @@ async function topicsModal({ discipline, onSaved }) {
       const data = await api.get(`/api/admin/disciplines/${discipline.id}/topics`);
       const topics = data.topics || [];
       if (topics.length === 0) {
-        mount(listNode, el('div', { class: 'empty', text: 'Тем пока нет — добавьте хотя бы одну, иначе студенты не увидят дисциплину.' }));
+        mount(listNode, el('div', { class: 'empty', text: 'Тем пока нет - добавьте хотя бы одну, иначе студенты не увидят дисциплину.' }));
         return;
       }
       mount(
@@ -813,7 +847,7 @@ async function topicsModal({ discipline, onSaved }) {
       el('summary', { class: 'small soft', style: { cursor: 'pointer' }, text: 'Добавить несколько тем сразу' }),
       el('div', { class: 'field', style: { 'margin-top': '10px' } }, [
         bulkArea,
-        el('span', { class: 'hint', text: 'Формат: «Название | 2026-09-05» или просто «Название».' }),
+        el('span', { class: 'hint', text: 'Формат: "Название | 2026-09-05" или просто "Название".' }),
       ]),
       el('button', {
         class: 'btn btn-sm btn-ghost',
@@ -867,7 +901,7 @@ function buildFormUrl({ disciplineId, topicId, formType }) {
 
 function qrModal({ discipline = null, topic = null }) {
   const disciplineSelect = el('select', { class: 'select' }, [
-    el('option', { text: '— любая дисциплина —', attrs: { value: '' } }),
+    el('option', { text: 'любая дисциплина', attrs: { value: '' } }),
     ...state.disciplines.map((d) => el('option', { text: d.title, attrs: { value: String(d.id) } })),
   ]);
   if (discipline) disciplineSelect.value = String(discipline.id);
@@ -1085,7 +1119,7 @@ async function renderReports() {
               ]),
               distributionBars(question.distribution, question.count),
               el('div', { class: 'center' }, [
-                el('div', { class: scoreClass(question.avg), text: question.avg === null ? '—' : fmtNum(question.avg, 2) }),
+                el('div', { class: scoreClass(question.avg), text: question.avg === null ? '-' : fmtNum(question.avg, 2) }),
                 el('div', { class: 'tiny muted', text: `ответов: ${question.count}` }),
               ]),
             ])
@@ -1149,7 +1183,7 @@ async function renderReports() {
       ]),
       el('div', { class: 'stats' }, [
         statCard('Всего анкет', report.total_responses ?? 0),
-        statCard('Средний балл', report.overall_avg === null ? '—' : fmtNum(report.overall_avg, 2)),
+        statCard('Средний балл', report.overall_avg === null ? '-' : fmtNum(report.overall_avg, 2)),
         statCard('По занятиям', report.by_form?.lesson ?? 0),
         statCard('Итоговых', report.by_form?.final ?? 0),
       ]),
@@ -1185,7 +1219,7 @@ async function renderAudit() {
                 el('td', { class: 'mono small', text: event.actor_login || 'anonymous' }),
                 el('td', { class: 'small', text: event.actor_role || '' }),
                 el('td', {}, [el('span', { class: 'badge', text: event.action })]),
-                el('td', { class: 'small', text: event.entity ? `${event.entity} #${event.entity_id ?? ''}` : '—' }),
+                el('td', { class: 'small', text: event.entity ? `${event.entity} #${event.entity_id ?? ''}` : '-' }),
                 el('td', { class: 'tiny muted', text: event.details || '' }),
               ])
             )

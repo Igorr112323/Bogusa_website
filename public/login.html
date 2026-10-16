@@ -3,32 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#2f4f70" />
+    <meta name="theme-color" content="#4550a8" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Вход · Анонимная обратная связь</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/css/styles.css" />
+    <link rel="stylesheet" href="/css/styles.css?v=1.0.6" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="container">
-        <a class="brand" href="/portal/">
-          <span>
-            Анонимная обратная связь
-            <small>вход для преподавателей и администратора</small>
-          </span>
-        </a>
-      </div>
-    </header>
-
     <main class="container container-narrow">
       <section class="section">
-        <div class="card">
+        <div class="card card-auth">
           <h1 id="login-title">Вход в систему</h1>
-          <p class="soft small">
-            Логин и пароль выдаёт администратор. Преподаватель видит только свои дисциплины и
-            обезличенные ответы студентов.
-          </p>
           <div id="alerts"></div>
 
           <form id="login-form" autocomplete="on" novalidate>
@@ -55,7 +40,6 @@
                 autocomplete="current-password"
                 required
               />
-              <span class="hint">Пароль передаётся по HTTPS и хранится на сервере только в виде bcrypt-хеша.</span>
             </div>
             <button class="btn btn-primary btn-lg btn-block" type="submit" id="login-submit">
               Войти
@@ -64,7 +48,7 @@
 
           <form id="password-form" class="hidden" novalidate>
             <div class="alert alert-warn">
-              Это первый вход с временным паролем. Придумайте свой пароль — не менее 10 символов,
+              Это первый вход с временным паролем. Придумайте свой пароль: не менее 10 символов,
               минимум два вида символов.
             </div>
             <div class="field">
@@ -80,18 +64,9 @@
             </button>
           </form>
         </div>
-
-        <div class="card">
-          <h2>Студентам</h2>
-          <p class="soft small">
-            Для заполнения анкеты вход не нужен — откройте
-            <a href="/form.html">страницу анкеты</a> или отсканируйте QR-код, который показывает
-            преподаватель.
-          </p>
-        </div>
       </section>
     </main>
 
-    <script type="module" src="/js/login.js"></script>
+    <script type="module" src="/js/login.js?v=1.0.6"></script>
   </body>
 </html>
