@@ -1,0 +1,859 @@
+/* ============================================================
+   Портал преподавателя и админ-панель
+   ============================================================ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  gap: var(--space-5);
+  align-items: flex-start;
+  padding-top: var(--space-5);
+  padding-bottom: var(--space-6);
+}
+
+/* ------------------------------ Шапка кабинетов ------------------------------ */
+/* Плоский индиго, без градиента. На экране до 520px - высота 56px,
+   подзаголовок бренда и бейдж пользователя скрыты. */
+
+.app-shell .site-header {
+  background: var(--brand-700);
+  border-bottom: none;
+  backdrop-filter: none;
+}
+
+.app-shell .site-header .container {
+  min-height: 64px;
+  gap: var(--space-2) var(--space-3);
+}
+
+.app-shell .site-header .brand {
+  color: #fff;
+}
+
+.app-shell .site-header .brand small {
+  display: none;
+}
+
+.app-shell .site-header .badge {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.app-shell .site-header .btn-ghost {
+  --btn-bg: transparent;
+  --btn-fg: #fff;
+  --btn-border: rgba(255, 255, 255, 0.28);
+  min-height: 44px;
+}
+
+.app-shell .site-header .btn-ghost:hover {
+  --btn-bg: rgba(255, 255, 255, 0.12);
+  --btn-border: rgba(255, 255, 255, 0.42);
+  filter: none;
+}
+
+@media (max-width: 520px) {
+  .app-shell .site-header .container {
+    min-height: 56px;
+  }
+
+  .app-shell .site-header .brand small,
+  .app-shell .site-header #user-badge {
+    display: none;
+  }
+}
+
+/* Двери разделов на главной кабинета */
+.doors-dashboard .door {
+  min-height: 92px;
+}
+
+.doors-dashboard .door-title {
+  font-size: 1.06rem;
+}
+
+.sidebar {
+  display: none;
+  position: sticky;
+  top: 76px;
+  width: 232px;
+  flex: none;
+}
+
+@media (min-width: 900px) {
+  .sidebar {
+    display: block;
+  }
+}
+
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.side-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.94rem;
+  color: var(--text-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.side-nav button:hover {
+  background: var(--surface-2);
+}
+
+.side-nav button[aria-current='true'] {
+  background: var(--brand-700);
+  color: #fff;
+}
+
+.side-nav .nav-ico {
+  width: 20px;
+  text-align: center;
+  flex: none;
+}
+
+/* На узких экранах сайдбар скрыт, поэтому то же меню дублируется полосой сверху */
+.side-nav-top {
+  flex-direction: row;
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
+
+.side-nav-top button {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
+@media (min-width: 900px) {
+  .side-nav-top {
+    display: none;
+  }
+}
+
+/* Сколько анкет пришло с прошлого просмотра раздела */
+.nav-count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-500);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.side-nav button[aria-current='true'] .nav-count {
+  background: #fff;
+  color: var(--brand-700);
+}
+
+/* Две карточки статистики в отчёте - на всю ширину, а не в четыре колонки */
+@media (min-width: 720px) {
+  .stats-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.page-head h1 {
+  margin: 0;
+}
+
+.page-head .sub {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ------------------------------ Метрики ------------------------------ */
+
+.stats {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 560px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 720px) {
+  .stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stat-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.stat-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.filter-bar {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-4);
+}
+
+.filter-bar .field {
+  margin: 0;
+  min-width: 150px;
+  flex: 1 1 150px;
+}
+
+.filter-bar .field > label {
+  font-size: 0.82rem;
+}
+
+.filter-bar .btn-row {
+  flex: 0 0 auto;
+}
+
+/* ------------------------------ Таблицы ------------------------------ */
+
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+table.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  min-width: 540px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table td.num,
+.table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.table .row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ------------------------------ Баллы ------------------------------ */
+
+.score {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-5,
+.score-4 {
+  color: var(--ok);
+}
+
+.score-3 {
+  color: var(--warn);
+}
+
+.score-2,
+.score-1 {
+  color: var(--danger);
+}
+
+.dist {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 26px;
+  min-width: 92px;
+}
+
+.dist-bar {
+  flex: 1;
+  background: var(--brand-200);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  position: relative;
+}
+
+.dist-bar[data-score='5'],
+.dist-bar[data-score='4'] {
+  background: var(--brand-500);
+}
+
+.dist-bar[data-score='3'] {
+  background: var(--brand-400);
+}
+
+.dist-bar[data-score='1'],
+.dist-bar[data-score='2'] {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+}
+
+.bar-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 70px;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--brand-700);
+  border-radius: 999px;
+}
+
+.question-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+@media (min-width: 760px) {
+  .question-row {
+    grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr) 120px;
+    align-items: center;
+  }
+}
+
+.question-row:last-child {
+  border-bottom: none;
+}
+
+.question-row .q-label {
+  font-weight: 600;
+}
+
+/* ------------------------------ Комментарии ------------------------------ */
+
+.comments-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+@media (min-width: 900px) {
+  .comments-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.comment-group h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.comment {
+  padding: var(--space-3) 0;
+  border-top: 1px dashed var(--border);
+}
+
+.comment-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-meta {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ------------------------------ График ------------------------------ */
+
+.chart {
+  width: 100%;
+  height: 180px;
+  display: block;
+}
+
+.chart-legend {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+}
+
+.legend-dot.brand {
+  background: var(--brand-500);
+}
+
+.legend-dot.accent {
+  background: var(--accent-500);
+}
+
+/* ------------------------------ Модальное окно ------------------------------ */
+/* ------------------------------ Отчёт: выбор дисциплины, вида анкеты и периода ------------------------------ */
+
+.report-picker {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.report-picker .field {
+  margin-bottom: 0;
+}
+
+.report-picker .hint {
+  margin: 0;
+}
+
+.report-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.report-dates .field {
+  min-width: 150px;
+}
+
+.quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ------------------------------ Комментарии студентов ------------------------------ */
+
+.comments-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.comments-head h2 {
+  margin: 0;
+}
+
+.comment-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.comment-tools .input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.check-row .checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-700);
+}
+
+.comment-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.comment-list .comment-group h3 {
+  margin-top: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Один ответ студента: текст крупно, контекст - отдельными метками под ним */
+.comment-row {
+  padding: var(--space-3) 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.comment-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.comment-text {
+  font-size: 1rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.tag-soft {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tag-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-new {
+  background: var(--accent-50);
+  border-color: var(--accent-100);
+  color: var(--accent-700);
+}
+
+.question-row .q-bar {
+  margin-top: 8px;
+}
+
+/* ------------------------------ Раздел Мои темы ------------------------------ */
+
+.catalog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.catalog-head h2 {
+  margin: 0;
+  font-size: 1.16rem;
+}
+
+.catalog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.catalog-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.catalog-add .field {
+  flex: 1 1 170px;
+  margin-bottom: 0;
+}
+
+.catalog-add .field:first-child {
+  flex: 3 1 240px;
+}
+
+.catalog-add .hint {
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+}
+
+.table .row-off td {
+  color: var(--text-muted);
+}
+
+
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 28, 0.55);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  z-index: 50;
+  overflow-y: auto;
+}
+
+.modal {
+  width: min(640px, 100%);
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.modal-wide {
+  width: min(880px, 100%);
+}
+
+/* ------------------------------ Мелочи ------------------------------ */
+
+.qr-box {
+  display: grid;
+  place-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.qr-box img {
+  background: #fff;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  width: min(280px, 70vw);
+  height: auto;
+}
+
+.copy-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.copy-row input {
+  flex: 1 1 240px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px var(--space-4);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.kv dt {
+  color: var(--text-muted);
+}
+
+.kv dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.topic-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topic-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.topic-item .grow {
+  flex: 1;
+  min-width: 180px;
+}
+
+.topic-item.inactive {
+  opacity: 0.6;
+}
+
+.password-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  flex-wrap: wrap;
+  word-break: break-all;
+}
+
+@media print {
+  .sidebar,
+  .side-nav-top,
+  .filter-bar,
+  .row-actions,
+  .report-picker,
+  .comment-tools,
+  .catalog-add,
+  .site-header {
+    display: none !important;
+  }
+
+  .app-body {
+    padding: 0;
+  }
+}

@@ -1,0 +1,19 @@
+# Зависимости
+node_modules/
+
+# База данных (локальные данные, не коммитим)
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Секреты и локальные настройки
+.env
+.env.local
+
+# Логи и временные файлы
+*.log
+npm-debug.log*
+.DS_Store
+tmp/
+coverage/
