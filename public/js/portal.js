@@ -36,7 +36,6 @@ const root = document.querySelector('#view-root');
 const alertsNode = document.querySelector('#view-alerts');
 const sideNav = document.querySelector('#side-nav');
 const userBadge = document.querySelector('#user-badge');
-const sidebarNote = document.querySelector('#sidebar-note');
 
 const VIEWS = [
   { key: 'overview', label: 'Обзор' },
@@ -267,28 +266,7 @@ async function renderOverview() {
             ]),
           ])
         : null,
-      el('section', { class: 'section' }, [
-        el('div', { class: 'card card-tight' }, [
-          el('h3', { text: 'Как читать отчёт' }),
-          el('ul', { class: 'privacy-list small' }, [
-            el('li', { text: 'Средний балл считается по всем ответам выбранного типа анкеты.' }),
-            el('li', { text: 'Комментарии показываются без имён и групп - их невозможно связать с автором.' }),
-            el('li', { text: 'Если ответов мало, результаты скрываются, чтобы нельзя было вычислить автора.' }),
-          ]),
-        ]),
-      ]),
     ]);
-
-    if (state.user.role === 'admin') {
-      mount(sidebarNote, [
-        el('p', { class: 'small muted', text: 'Вы вошли как администратор: доступны все дисциплины и преподаватели.' }),
-        el('a', { class: 'btn btn-sm btn-ghost btn-block', attrs: { href: '/admin/' }, text: 'В админ-панель' }),
-      ]);
-    } else {
-      mount(sidebarNote, [
-        el('p', { class: 'small muted', text: 'Нужна ссылка или QR-код для студентов? Смотрите раздел "Отчёт по дисциплине".' }),
-      ]);
-    }
   } catch (error) {
     setAlert(error.message, 'danger');
     if (error.status === 401) {
@@ -766,11 +744,8 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 
 (async function boot() {
   loadToken();
-  // Ссылка на студенческий сайт ведёт на студенческий порт, а не на адрес панели.
-  loadStudentBase().then(() => {
-    const studentsLink = document.querySelector('#students-link');
-    if (studentsLink) studentsLink.href = studentUrl('/');
-  });
+  // Нужна, чтобы ссылки на анкету в отчёте вели на студенческий порт.
+  loadStudentBase();
   try {
     const { user } = await api.get('/api/auth/me');
     if (!user) throw new Error('not authenticated');

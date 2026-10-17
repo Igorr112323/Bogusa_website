@@ -459,11 +459,25 @@ test('убранные блоки не возвращаются', () => {
   assert.ok(!login.includes('Логин и пароль выдаёт администратор'), 'пояснение про администратора убрано');
   assert.ok(!login.includes('Студентам'), 'карточка для студентов на входе убрана');
 
+  assert.ok(login.includes('id="login-submit"'), 'кнопка входа на месте');
+  assert.ok(!login.includes('btn-block'), 'кнопка входа не тянется на всю ширину блока');
+  assert.match(
+    read('public/css/styles.css'),
+    /\.card-auth form > \.btn \{\n  display: flex;\n  width: auto;\n  min-width: 220px;\n  margin: var\(--space-1\) auto 0;/,
+    'кнопка входа центрирована в карточке',
+  );
+
   assert.ok(!read('public/form.html').includes('form-subtitle'), 'подзаголовка анкеты нет');
 
   for (const file of ['public/portal/index.html', 'public/admin/index.html']) {
     assert.ok(!read(file).includes('анонимная обратная связь студентов'), `${file}: подзаголовка в шапке нет`);
   }
+
+  const portalHtml = read('public/portal/index.html');
+  assert.ok(!portalHtml.includes('site-footer'), 'в кабинете нет футера с текстом про обезличивание');
+  assert.ok(!portalHtml.includes('students-link'), 'ссылки «Страница студентов» в шапке кабинета нет');
+  assert.ok(!portalHtml.includes('sidebar-note'), 'заметки под меню кабинета нет');
+  assert.ok(!read('public/js/portal.js').includes('Как читать отчёт'), 'блока «Как читать отчёт» в обзоре нет');
 
   const landingHtml = read('public/index.html');
   assert.ok(!landingHtml.includes('page-intro'), 'вводного абзаца на главной нет');

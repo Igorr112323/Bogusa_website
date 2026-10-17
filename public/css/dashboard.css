@@ -65,8 +65,7 @@
   }
 
   .app-shell .site-header .brand small,
-  .app-shell .site-header #user-badge,
-  .app-shell .site-header #students-link {
+  .app-shell .site-header #user-badge {
     display: none;
   }
 }
