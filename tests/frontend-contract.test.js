@@ -438,18 +438,73 @@ test('адаптив mobile-first: 1 колонка, 2 от 560px, 4 от 720px,
   assert.match(styles, /\.door \{[\s\S]*?min-height: 76px;/, 'двери крупные, по всей ширине');
 });
 
-test('кабинет и админка: двери разделов вместо вкладок, плоская индиговая шапка', () => {
+test('кабинет: три раздела в меню, на узком экране полоса сверху; в админке остаются двери', () => {
   for (const file of ['public/portal/index.html', 'public/admin/index.html', 'public/css/dashboard.css']) {
-    assert.ok(!read(file).includes('top-tabs'), `${file}: вкладок разделов больше нет`);
+    assert.ok(!read(file).includes('top-tabs'), `${file}: вкладок-полосы внизу шапки больше нет`);
   }
-  for (const file of ['public/js/portal.js', 'public/js/admin.js']) {
-    const source = read(file);
-    assert.ok(source.includes('doorsSection'), `${file}: на главной рисуются двери разделов`);
-    assert.ok(!source.includes("mount(topTabs"), `${file}: вкладок больше нет`);
+
+  const portal = read('public/js/portal.js');
+  for (const label of ['Отчёт', 'Мои темы', 'Пароль']) {
+    assert.ok(portal.includes(`label: '${label}'`), `в меню кабинета нет раздела ${label}`);
   }
+  assert.ok(!portal.includes("'Обзор'"), 'Обзор убран: сразу после входа открывается отчёт');
+  assert.ok(!portal.includes('Отзывы студентов'), 'отдельного раздела отзывов нет: комментарии в отчёте');
+  assert.ok(!portal.includes('doorsSection'), 'в кабинете три раздела, двери не нужны');
+  assert.ok(portal.includes('nav-count'), 'на разделе Отчёт виден счётчик новых анкет');
+
+  const portalHtml = read('public/portal/index.html');
+  assert.ok(portalHtml.includes('id="side-nav-top"'), 'на узком экране меню дублируется полосой над содержимым');
+  assert.ok(!read('public/admin/index.html').includes('side-nav-top'), 'в админ-панели полоса не нужна: там двери');
+
   const dash = read('public/css/dashboard.css');
+  assert.match(dash, /\.side-nav-top \{\n  flex-direction: row;/);
+  assert.match(dash, /\.nav-count \{/, 'счётчик новых ответов описан в CSS');
   assert.match(dash, /\.app-shell \.site-header \{\n  background: var\(--brand-700\);/);
-  assert.match(dash, /\.doors-dashboard \.door \{\n  min-height: 92px;/);
+  assert.match(dash, /\.doors-dashboard \.door \{\n  min-height: 92px;/, 'двери админ-панели остаются крупными');
+  assert.ok(read('public/js/admin.js').includes('doorsSection'), 'в админ-панели разделы - двери');
+});
+
+test('отчёт преподавателя: дисциплина, две крупные кнопки, тема, период, оценки и лента комментариев', () => {
+  const portal = read('public/js/portal.js');
+  // порядок блоков проверяем внутри function pickerCard: там разметка блока выбора
+  const from = portal.indexOf('function pickerCard');
+  const to = portal.indexOf('async function renderReport');
+  const picker = portal.slice(from, to);
+  assert.ok(from > 0 && to > from, 'блок выбора фильтров описан в pickerCard');
+  // порядок именно в разметке: смотрим на children, которые возвращает pickerCard
+  const markup = picker.slice(picker.indexOf("return el('div', { class: 'card card-tight report-picker' }"));
+  assert.ok(markup.length > 100, 'блок фильтров собирается в return функции pickerCard');
+  const order = ["text: 'Дисциплина'", 'formSwitch(', "text: 'Тема занятия'", "dateField('С даты'"].map((needle) => {
+    const at = markup.indexOf(needle);
+    assert.ok(at >= 0, `в блоке фильтров нет ${needle}`);
+    return at;
+  });
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'порядок: дисциплина, кнопки вида анкеты, тема, период');
+  assert.ok(/function formSwitch[\s\S]*?class: 'form-switch'[\s\S]*?btn-switch/.test(portal), 'вид анкеты - кнопки в группе form-switch, а не select');
+  assert.ok(portal.includes("'aria-pressed'") && portal.includes('btn-switch'), 'активная кнопка помечена aria-pressed');
+  assert.ok(/type: 'date'/.test(portal), 'период задаётся двумя датами');
+  assert.ok(portal.includes("quick('Семестр'") && portal.includes("quick('Всё время'"), 'есть быстрые периоды');
+  assert.ok(portal.includes("'Всего анкет'") && portal.includes("'Средний балл'"), 'статистика считается по выбранному периоду');
+  assert.ok(!portal.includes('timelineChart') && !portal.includes('Динамика'), 'графика динамики из кабинета убран');
+  assert.ok(portal.includes('Комментарии студентов') && portal.includes("class: 'comment-row'"), 'комментарии - строками, а не сплошным списком');
+  assert.ok(portal.includes('comment-tags') && portal.includes('tag-new'), 'у отзыва метки: дата, тема, флаг новое');
+  assert.ok(portal.includes('markSeen') && portal.includes('/api/teacher/seen'), 'просмотр раздела отмечается');
+
+  const dash = read('public/css/dashboard.css');
+  assert.match(dash, /\.comment-text \{\n  font-size: 1rem;/, 'текст отзыва крупнее меток');
+  assert.match(dash, /\.stats-2 \{\n    grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/, 'две карточки статистики на всю ширину');
+  assert.match(read('public/css/styles.css'), /\.btn-switch \{\n  min-height: 60px;/, 'кнопки вида анкеты крупные');
+});
+
+test('мои темы: преподаватель ведёт дисциплины и занятия, но не удаляет', () => {
+  const portal = read('public/js/portal.js');
+  for (const route of ['/api/teacher/disciplines', '/api/teacher/topics', '/topics/bulk', '/api/teacher/seen']) {
+    assert.ok(portal.includes(route), `в кабинете нет обращения к ${route}`);
+  }
+  assert.ok(portal.includes("'Создать дисциплину'") || portal.includes("'Создать дисциплину',"), 'есть форма создания дисциплины');
+  assert.ok(portal.includes('Добавить занятие'), 'темы добавляются по одной и списком');
+  assert.ok(!portal.includes('api.del('), 'из кабинета ничего не удаляется - это право администратора');
+  assert.ok(!portal.includes('/api/admin'), 'кабинет преподавателя не пользуется админским API');
 });
 
 test('убранные блоки не возвращаются', () => {

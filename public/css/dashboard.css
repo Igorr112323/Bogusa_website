@@ -135,6 +135,49 @@
   flex: none;
 }
 
+/* На узких экранах сайдбар скрыт, поэтому то же меню дублируется полосой сверху */
+.side-nav-top {
+  flex-direction: row;
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
+
+.side-nav-top button {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+}
+
+@media (min-width: 900px) {
+  .side-nav-top {
+    display: none;
+  }
+}
+
+/* Сколько анкет пришло с прошлого просмотра раздела */
+.nav-count {
+  margin-left: auto;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-500);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.side-nav button[aria-current='true'] .nav-count {
+  background: #fff;
+  color: var(--brand-700);
+}
+
+/* Две карточки статистики в отчёте - на всю ширину, а не в четыре колонки */
+@media (min-width: 720px) {
+  .stats-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .app-main {
   flex: 1;
   min-width: 0;
@@ -465,6 +508,206 @@ table.table {
 }
 
 /* ------------------------------ Модальное окно ------------------------------ */
+/* ------------------------------ Отчёт: выбор дисциплины, вида анкеты и периода ------------------------------ */
+
+.report-picker {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.report-picker .field {
+  margin-bottom: 0;
+}
+
+.report-picker .hint {
+  margin: 0;
+}
+
+.report-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.report-dates .field {
+  min-width: 150px;
+}
+
+.quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ------------------------------ Комментарии студентов ------------------------------ */
+
+.comments-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.comments-head h2 {
+  margin: 0;
+}
+
+.comment-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.comment-tools .input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.check-row .checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-700);
+}
+
+.comment-list {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.comment-list .comment-group h3 {
+  margin-top: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Один ответ студента: текст крупно, контекст - отдельными метками под ним */
+.comment-row {
+  padding: var(--space-3) 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.comment-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.comment-text {
+  font-size: 1rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.tag-soft {
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.tag-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-new {
+  background: var(--accent-50);
+  border-color: var(--accent-100);
+  color: var(--accent-700);
+}
+
+.question-row .q-bar {
+  margin-top: 8px;
+}
+
+/* ------------------------------ Раздел Мои темы ------------------------------ */
+
+.catalog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.catalog-head h2 {
+  margin: 0;
+  font-size: 1.16rem;
+}
+
+.catalog-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-3);
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.catalog-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.catalog-add .field {
+  flex: 1 1 170px;
+  margin-bottom: 0;
+}
+
+.catalog-add .field:first-child {
+  flex: 3 1 240px;
+}
+
+.catalog-add .hint {
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+}
+
+.table .row-off td {
+  color: var(--text-muted);
+}
+
+
 
 .modal-backdrop {
   position: fixed;
@@ -600,8 +843,12 @@ table.table {
 
 @media print {
   .sidebar,
+  .side-nav-top,
   .filter-bar,
   .row-actions,
+  .report-picker,
+  .comment-tools,
+  .catalog-add,
   .site-header {
     display: none !important;
   }

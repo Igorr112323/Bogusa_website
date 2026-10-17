@@ -10,7 +10,14 @@ const express = require('express');
 const { ApiError } = require('../errors');
 const { parseId, parseDate, parseFormType, parseBool } = require('../validate');
 const { sanitizeText } = require('../sanitize');
-const { visibleDisciplines, resolveScope, isAdmin, getDiscipline } = require('../services/access');
+const {
+  visibleDisciplines,
+  resolveScope,
+  isAdmin,
+  getDiscipline,
+  assertDisciplineAccess,
+  assertTopicAccess,
+} = require('../services/access');
 const {
   aggregate,
   timeline,
@@ -18,10 +25,12 @@ const {
   disciplineStatsMap,
   buildFilter,
 } = require('../services/analytics');
-const { all, get } = require('../db');
+const { all, get, run, nowIso } = require('../db');
 const { toCsv } = require('../csv');
 const { questionLabels } = require('../questions');
 const { MIN_ANSWERS_LABEL } = require('../constants');
+const { parseDisciplinePayload, parseTopicPayload } = require('../validator');
+const { logAudit } = require('../audit');
 
 const router = express.Router();
 
@@ -31,6 +40,82 @@ function parseFilters(req, base = {}) {
   const from = parseDate(req.query.from, { fieldName: 'Дата «с»' });
   const to = parseDate(req.query.to, { fieldName: 'Дата «по»' });
   return { ...base, formType, from, to };
+}
+
+/* ------------------------------------------------------------------ */
+/* Новые ответы с прошлого просмотра раздела «Отчёт»                   */
+/* ------------------------------------------------------------------ */
+
+/** Момент последнего захода в отчёт. Пустая строка = преподаватель ещё не заходил. */
+function seenThreshold(userId) {
+  const row = get('SELECT seen_at FROM teacher_views WHERE user_id = ?', userId);
+  return row ? row.seen_at : '';
+}
+
+/** Условия видимости: преподаватель - только свои дисциплины, админ - все. */
+function ownerClause(user, params) {
+  if (isAdmin(user)) return null;
+  params.push(user.id);
+  return 'r.teacher_id = ?';
+}
+
+/** Сколько анкет и комментариев пришло после seenThreshold. */
+function newSince(user, { disciplineId = null, topicId = null, since = undefined } = {}) {
+  const threshold = since === undefined ? seenThreshold(user.id) : since;
+  const clauses = ['r.created_at > ?'];
+  const params = [threshold];
+  const owner = ownerClause(user, params);
+  if (owner) clauses.push(owner);
+  if (disciplineId) {
+    clauses.push('r.discipline_id = ?');
+    params.push(disciplineId);
+  }
+  if (topicId) {
+    clauses.push('r.topic_id = ?');
+    params.push(topicId);
+  }
+  const where = clauses.join(' AND ');
+  const responses = get(`SELECT COUNT(*) AS n FROM responses r WHERE ${where}`, ...params).n;
+  const comments = get(
+    `SELECT COUNT(*) AS n
+       FROM answer_comments c JOIN responses r ON r.id = c.response_id
+      WHERE ${where}`,
+    ...params
+  ).n;
+  return { responses, comments, seen_at: threshold || null };
+}
+
+/** Те же счётчики, но сгруппированные по дисциплинам - для меню и списка тем. */
+function newByDiscipline(user, { since = undefined } = {}) {
+  const threshold = since === undefined ? seenThreshold(user.id) : since;
+  const build = (from) => {
+    const params = [threshold];
+    const owner = ownerClause(user, params);
+    return all(
+      `SELECT r.discipline_id AS id, COUNT(*) AS n
+         FROM ${from}
+        WHERE r.created_at > ?${owner ? ` AND ${owner}` : ''}
+        GROUP BY r.discipline_id`,
+      ...params
+    );
+  };
+  const map = new Map();
+  const slot = (id) => {
+    if (!map.has(id)) map.set(id, { new_responses: 0, new_comments: 0 });
+    return map.get(id);
+  };
+  for (const row of build('responses r')) slot(row.id).new_responses = row.n;
+  for (const row of build('answer_comments c JOIN responses r ON r.id = c.response_id')) {
+    slot(row.id).new_comments = row.n;
+  }
+  return map;
+}
+
+/** Дисциплина, закреплённая за преподавателем: чужие не создаём и не правим. */
+function assertUserIsTeacher(userId) {
+  const user = get('SELECT id, role FROM users WHERE id = ?', userId);
+  if (!user || user.role !== 'teacher') throw new ApiError(400, 'Преподаватель не найден');
+  return user;
 }
 
 /** Сводка для портала: сколько ответов, средние баллы, последние активности. */
@@ -113,13 +198,28 @@ router.get('/disciplines', (req, res) => {
     teacher_name: d.teacher_name || null,
     topics_count: d.topics_count,
     topics: all(
-      `SELECT id, title, lesson_date, is_active FROM topics
-        WHERE discipline_id = ?
-        ORDER BY (lesson_date IS NULL) ASC, lesson_date DESC, position ASC, id ASC`,
+      `SELECT t.id, t.title, t.lesson_date, t.is_active,
+              (SELECT COUNT(*) FROM responses r WHERE r.topic_id = t.id) AS responses
+         FROM topics t
+        WHERE t.discipline_id = ?
+        ORDER BY (t.lesson_date IS NULL) ASC, t.lesson_date DESC, t.position ASC, t.id ASC`,
       d.id
-    ),
+    ).map((t) => ({ ...t, is_active: !!t.is_active })),
   }));
-  res.json({ disciplines });
+
+  const fresh = newByDiscipline(req.user);
+  const withNew = disciplines.map((d) => ({
+    ...d,
+    new_responses: fresh.get(d.id)?.new_responses ?? 0,
+    new_comments: fresh.get(d.id)?.new_comments ?? 0,
+  }));
+
+  res.json({
+    disciplines: withNew,
+    new_responses_total: withNew.reduce((acc, d) => acc + d.new_responses, 0),
+    new_comments_total: withNew.reduce((acc, d) => acc + d.new_comments, 0),
+    seen_at: seenThreshold(req.user.id) || null,
+  });
 });
 
 /** Отчёт по дисциплине: средние по пунктам + комментарии. */
@@ -128,10 +228,17 @@ router.get('/disciplines/:id/report', (req, res, next) => {
     const disciplineId = parseId(req.params.id, 'идентификатор дисциплины');
     resolveScope(req.user, { disciplineId });
     const filters = parseFilters(req, { disciplineId });
-    const report = aggregate(filters, { enforceMinimum: !isAdmin(req.user) });
+    const report = aggregate(filters, {
+      enforceMinimum: !isAdmin(req.user),
+      since: seenThreshold(req.user.id),
+    });
     report.timeline = timeline(filters, { formType: filters.formType });
     report.discipline = getDiscipline(disciplineId);
     if (!report.discipline) throw new ApiError(404, 'Дисциплина не найдена');
+    const fresh = newSince(req.user, { disciplineId });
+    report.new_responses = fresh.responses;
+    report.new_comments = fresh.comments;
+    report.seen_at = fresh.seen_at;
     res.json(report);
   } catch (err) {
     next(err);
@@ -144,7 +251,10 @@ router.get('/topics/:id/report', (req, res, next) => {
     const topicId = parseId(req.params.id, 'идентификатор темы');
     resolveScope(req.user, { topicId });
     const filters = parseFilters(req, { topicId, formType: 'lesson' });
-    const report = aggregate(filters, { enforceMinimum: !isAdmin(req.user) });
+    const report = aggregate(filters, {
+      enforceMinimum: !isAdmin(req.user),
+      since: seenThreshold(req.user.id),
+    });
     const topic = get(
       `SELECT t.id, t.title, t.lesson_date, d.id AS discipline_id, d.title AS discipline_title,
               u.full_name AS teacher_name
@@ -156,6 +266,10 @@ router.get('/topics/:id/report', (req, res, next) => {
     );
     report.topic = topic || null;
     report.timeline = timeline(filters, { formType: 'lesson' });
+    const fresh = newSince(req.user, { disciplineId: topic?.discipline_id ?? null, topicId });
+    report.new_responses = fresh.responses;
+    report.new_comments = fresh.comments;
+    report.seen_at = fresh.seen_at;
     res.json(report);
   } catch (err) {
     next(err);
@@ -174,6 +288,8 @@ router.get('/comments', (req, res, next) => {
     const from = parseDate(req.query.from, { fieldName: 'Дата «с»' });
     const to = parseDate(req.query.to, { fieldName: 'Дата «по»' });
     const search = sanitizeText(req.query.q || '', { maxLength: 80, keepNewlines: false });
+    const onlyNew = parseBool(req.query.only_new, false);
+    const threshold = seenThreshold(req.user.id);
 
     const filters = { ...scope, formType, from, to };
     if (!isAdmin(req.user)) filters.teacherId = req.user.id;
@@ -181,13 +297,17 @@ router.get('/comments', (req, res, next) => {
     const filter = buildFilter(filters);
     const params = [...filter.params];
     let extra = '';
+    if (onlyNew) {
+      extra += ' AND r.created_at > ?';
+      params.push(threshold);
+    }
     if (search) {
-      extra = " AND c.body LIKE ? ESCAPE '\\'";
+      extra += " AND c.body LIKE ? ESCAPE '\\'";
       params.push(`%${search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`);
     }
 
     const rows = all(
-      `SELECT c.id, c.question_key, c.body, c.created_date, r.form_type,
+      `SELECT c.id, c.question_key, c.body, c.created_date, r.form_type, r.created_at,
               d.title AS discipline_title, t.title AS topic_title, t.lesson_date
          FROM answer_comments c
          JOIN responses r ON r.id = c.response_id
@@ -209,8 +329,10 @@ router.get('/comments', (req, res, next) => {
       comments: rows.map((row) => ({
         ...row,
         question_label: labels[row.question_key]?.label || row.question_key,
+        is_new: row.created_at > threshold,
       })),
       count: rows.length,
+      seen_at: threshold || null,
     });
   } catch (err) {
     next(err);
@@ -239,6 +361,178 @@ router.get('/export.csv', (req, res, next) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(`\uFEFF${csv}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Дисциплины и темы: преподаватель ведёт их сам                        */
+/* ------------------------------------------------------------------ */
+
+/** Новая дисциплина всегда закрепляется за её создателем (админ может указать другого). */
+router.post('/disciplines', (req, res, next) => {
+  try {
+    const payload = parseDisciplinePayload(req.body || {});
+    let teacherId = req.user.id;
+    if (isAdmin(req.user)) {
+      if (payload.teacher_id && payload.teacher_id !== req.user.id) {
+        assertUserIsTeacher(payload.teacher_id);
+        teacherId = payload.teacher_id;
+      }
+    }
+
+    const now = nowIso();
+    const inserted = run(
+      `INSERT INTO disciplines (title, code, teacher_id, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      payload.title,
+      payload.code,
+      teacherId,
+      payload.is_active === undefined ? 1 : payload.is_active,
+      now,
+      now
+    );
+
+    logAudit(req, 'discipline.created', {
+      entity: 'discipline',
+      entityId: inserted.lastInsertRowid,
+      details: { title: payload.title, teacher_id: teacherId },
+    });
+
+    res.status(201).json({ ok: true, discipline: getDiscipline(inserted.lastInsertRowid) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Правит только название, код и флаг активности: преподавателя назначает админ. */
+router.patch('/disciplines/:id', (req, res, next) => {
+  try {
+    const id = parseId(req.params.id, 'идентификатор дисциплины');
+    assertDisciplineAccess(req.user, id);
+
+    const payload = parseDisciplinePayload(req.body || {}, { partial: true });
+    const fields = [];
+    const params = [];
+    for (const key of ['title', 'code', 'is_active']) {
+      if (payload[key] !== undefined) {
+        fields.push(`${key} = ?`);
+        params.push(payload[key]);
+      }
+    }
+    if (fields.length === 0) throw new ApiError(400, 'Нет данных для обновления');
+    fields.push('updated_at = ?');
+    params.push(nowIso());
+    params.push(id);
+
+    run(`UPDATE disciplines SET ${fields.join(', ')} WHERE id = ?`, ...params);
+    logAudit(req, 'discipline.updated', { entity: 'discipline', entityId: id, details: Object.keys(payload) });
+    res.json({ ok: true, discipline: getDiscipline(id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Тема занятия в своей дисциплине. */
+router.post('/topics', (req, res, next) => {
+  try {
+    const disciplineId = parseId(req.body?.discipline_id, 'идентификатор дисциплины');
+    assertDisciplineAccess(req.user, disciplineId);
+    const payload = parseTopicPayload(req.body || {});
+
+    const inserted = run(
+      `INSERT INTO topics (discipline_id, title, lesson_date, position, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      disciplineId,
+      payload.title,
+      payload.lesson_date,
+      payload.position || 0,
+      payload.is_active === undefined ? 1 : payload.is_active,
+      nowIso()
+    );
+
+    logAudit(req, 'topic.created', { entity: 'topic', entityId: inserted.lastInsertRowid, details: { disciplineId } });
+    res.status(201).json({ ok: true, id: inserted.lastInsertRowid });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Список занятий семестра сразу: одна тема в строке, дата необязательна. */
+router.post('/disciplines/:id/topics/bulk', (req, res, next) => {
+  try {
+    const disciplineId = parseId(req.params.id, 'идентификатор дисциплины');
+    assertDisciplineAccess(req.user, disciplineId);
+
+    const items = req.body?.topics;
+    if (!Array.isArray(items) || items.length === 0) throw new ApiError(400, 'Передайте массив тем');
+    if (items.length > 100) throw new ApiError(400, 'За один раз можно добавить не более 100 тем');
+
+    const now = nowIso();
+    const created = [];
+    const { tx } = require('../db');
+    tx(() => {
+      let position = get('SELECT IFNULL(MAX(position), 0) AS p FROM topics WHERE discipline_id = ?', disciplineId).p;
+      for (const item of items) {
+        const payload = parseTopicPayload(item || {});
+        position += 1;
+        const inserted = run(
+          `INSERT INTO topics (discipline_id, title, lesson_date, position, is_active, created_at)
+           VALUES (?, ?, ?, ?, 1, ?)`,
+          disciplineId,
+          payload.title,
+          payload.lesson_date,
+          payload.position || position,
+          now
+        );
+        created.push(inserted.lastInsertRowid);
+      }
+    });
+
+    logAudit(req, 'topic.bulk_created', { entity: 'discipline', entityId: disciplineId, details: { count: created.length } });
+    res.status(201).json({ ok: true, created: created.length, ids: created });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/topics/:id', (req, res, next) => {
+  try {
+    const id = parseId(req.params.id, 'идентификатор темы');
+    assertTopicAccess(req.user, id);
+    const payload = parseTopicPayload(req.body || {}, { partial: true });
+
+    const fields = [];
+    const params = [];
+    for (const key of ['title', 'lesson_date', 'position', 'is_active']) {
+      if (payload[key] !== undefined) {
+        fields.push(`${key} = ?`);
+        params.push(payload[key]);
+      }
+    }
+    if (fields.length === 0) throw new ApiError(400, 'Нет данных для обновления');
+    params.push(id);
+
+    run(`UPDATE topics SET ${fields.join(', ')} WHERE id = ?`, ...params);
+    logAudit(req, 'topic.updated', { entity: 'topic', entityId: id, details: Object.keys(payload) });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Раздел просмотрен: счётчик новых анкет и комментариев обнуляется. */
+router.post('/seen', (req, res, next) => {
+  try {
+    const seenAt = nowIso();
+    run(
+      `INSERT INTO teacher_views (user_id, seen_at) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET seen_at = excluded.seen_at`,
+      req.user.id,
+      seenAt
+    );
+    res.json({ ok: true, seen_at: seenAt });
   } catch (err) {
     next(err);
   }

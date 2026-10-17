@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at  TEXT NOT NULL
 );
 
+-- Отметка последнего просмотра раздела «Отчёт»: по ней считаем, что студент
+-- ответил с прошлого захода преподавателя (новые анкеты и комментарии).
+CREATE TABLE IF NOT EXISTS teacher_views (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  seen_at TEXT    NOT NULL,
+  PRIMARY KEY (user_id)
+);
+
 CREATE TABLE IF NOT EXISTS schema_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

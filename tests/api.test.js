@@ -674,3 +674,132 @@ test('границы периода в сводке не зависят от п�
   assert.equal(overview.json.totals.first_response_at, '2026-01-05T08:00:00.000Z');
   assert.equal(overview.json.totals.last_response_at, '2026-09-18T12:30:00.000Z');
 });
+
+/* --------------- Ведение дисциплин и тем самим преподавателем --------------- */
+
+test('преподаватель создаёт дисциплину и темы, правит их, но не удаляет', async () => {
+  const teacher = staffClient();
+  await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
+
+  const created = await teacher.post('/api/teacher/disciplines', { title: 'Веб-технологии', code: 'WT-101' });
+  assert.equal(created.status, 201);
+  const myDiscipline = created.json.discipline;
+  assert.equal(myDiscipline.teacher_id, teacherId, 'дисциплина сразу закреплена за создателем');
+  assert.equal(myDiscipline.is_active, 1);
+
+  const tooShort = await teacher.post('/api/teacher/disciplines', { title: 'А' });
+  assert.equal(tooShort.status, 400, 'название короче двух символов не принимается');
+
+  const topic = await teacher.post('/api/teacher/topics', {
+    discipline_id: myDiscipline.id,
+    title: 'Введение и настройка окружения',
+    lesson_date: '2026-09-01',
+  });
+  assert.equal(topic.status, 201);
+
+  const bulk = await teacher.post(`/api/teacher/disciplines/${myDiscipline.id}/topics/bulk`, {
+    topics: [{ title: 'Семантическая вёрстка' }, { title: 'Формы и валидация', lesson_date: '2026-09-08' }],
+  });
+  assert.equal(bulk.status, 201);
+  assert.equal(bulk.json.created, 2);
+
+  const list = await teacher.get('/api/teacher/disciplines');
+  const mine = list.json.disciplines.find((d) => d.id === myDiscipline.id);
+  assert.equal(mine.topics.length, 3, 'темы видны в списке дисциплин');
+  assert.ok(mine.topics.every((t) => 'responses' in t), 'у каждой темы видно число анкет');
+
+  const renamed = await teacher.patch(`/api/teacher/disciplines/${myDiscipline.id}`, {
+    title: 'Веб-технологии, модуль 2',
+    teacher_id: 1,
+  });
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.json.discipline.title, 'Веб-технологии, модуль 2');
+  assert.equal(renamed.json.discipline.teacher_id, teacherId, 'перевесить дисциплину на другого может только администратор');
+
+  const topicEdit = await teacher.patch(`/api/teacher/topics/${topic.json.id}`, { title: 'Введение', is_active: false });
+  assert.equal(topicEdit.status, 200);
+
+  const off = await teacher.patch(`/api/teacher/disciplines/${myDiscipline.id}`, { is_active: false });
+  assert.equal(off.status, 200);
+  assert.equal(off.json.discipline.is_active, 0, 'дисциплина выключена');
+
+  assert.equal((await teacher.del(`/api/teacher/disciplines/${myDiscipline.id}`)).status, 404, 'удалять дисциплины - право администратора');
+  assert.equal((await teacher.del(`/api/teacher/topics/${topic.json.id}`)).status, 404, 'темы тоже не удаляются из кабинета');
+
+  const other = await adminClient.post('/api/admin/teachers', {
+    login: 'foreign',
+    full_name: 'Чужой Преподаватель',
+    password: 'Foreign#2026pass',
+  });
+  const foreignDiscipline = await adminClient.post('/api/admin/disciplines', {
+    title: 'Иностранный язык в профессиональной сфере',
+    teacher_id: other.json.teacher.id,
+  });
+  const foreignId = foreignDiscipline.json.discipline.id;
+
+  assert.equal((await teacher.patch(`/api/teacher/disciplines/${foreignId}`, { title: 'Взлом' })).status, 403);
+  assert.equal((await teacher.post('/api/teacher/topics', { discipline_id: foreignId, title: 'Чужая тема' })).status, 403);
+  assert.equal(
+    (await teacher.post(`/api/teacher/disciplines/${foreignId}/topics/bulk`, { topics: [{ title: 'Чужая тема 2' }] })).status,
+    403
+  );
+  const foreignTopic = await adminClient.post('/api/admin/topics', {
+    discipline_id: foreignId,
+    title: 'Чужое занятие',
+    lesson_date: '2026-09-01',
+  });
+  assert.equal(foreignTopic.status, 201);
+  assert.equal((await teacher.patch(`/api/teacher/topics/${foreignTopic.json.id}`, { title: 'Переименовано чужим' })).status, 403);
+
+  // выключенная дисциплина исчезает из студенческого каталога
+  const catalog = await studentClient().get('/api/disciplines');
+  assert.ok(!catalog.json.disciplines.some((d) => d.id === myDiscipline.id), 'выключенную дисциплину студенты не видят');
+});
+
+test('счётчик новых ответов: отметка просмотра раздела сбрасывает его', async () => {
+  const teacher = staffClient();
+  await teacher.post('/api/auth/login', { login: 'petrov', password: 'Noviy#Parol2026' });
+
+  const before = await teacher.get('/api/teacher/disciplines');
+  assert.equal(before.status, 200);
+  assert.equal(before.json.seen_at, null, 'отметки о просмотре ещё нет');
+  const target = before.json.disciplines.find((d) => d.id === disciplineId);
+  assert.ok(target.new_responses >= 2, 'пока преподаватель не заходил, все ответы новые');
+  assert.ok(target.new_comments >= 1);
+  assert.ok(before.json.new_responses_total >= 2);
+
+  const seen = await teacher.post('/api/teacher/seen', {});
+  assert.equal(seen.status, 200);
+  assert.ok(seen.json.seen_at);
+
+  const after = await teacher.get('/api/teacher/disciplines');
+  assert.equal(after.json.new_responses_total, 0, 'раздел просмотрен: новых нет');
+  assert.equal(after.json.new_comments_total, 0);
+  const cleanReport = await teacher.get(`/api/teacher/disciplines/${disciplineId}/report?form_type=lesson`);
+  assert.equal(cleanReport.json.new_responses, 0);
+
+  const student = studentClient();
+  const submit = await student.post('/api/responses', {
+    discipline_id: disciplineId,
+    topic_id: topicId,
+    form_type: 'lesson',
+    scores: lessonScores,
+    comments: { l_liked: 'Отзыв после просмотра раздела' },
+  });
+  assert.equal(submit.status, 201);
+
+  const onceMore = await teacher.get('/api/teacher/disciplines');
+  assert.equal(onceMore.json.new_responses_total, 1);
+
+  const freshReport = await teacher.get(`/api/teacher/disciplines/${disciplineId}/report?form_type=lesson`);
+  assert.equal(freshReport.json.new_responses, 1);
+  assert.equal(freshReport.json.new_comments, 1);
+  const items = freshReport.json.forms[0].comments.flatMap((group) => group.items);
+  assert.ok(items.some((item) => item.is_new && item.body.includes('Отзыв после просмотра')), 'свежий отзыв помечен как новый');
+  assert.ok(items.some((item) => item.is_new === false), 'старые отзывы не помечаются');
+
+  const onlyNew = await teacher.get('/api/teacher/comments?only_new=1');
+  assert.equal(onlyNew.status, 200);
+  assert.ok(onlyNew.json.comments.length >= 1);
+  assert.ok(onlyNew.json.comments.every((c) => c.is_new), 'фильтр только новые отдаёт исключительно новые');
+});

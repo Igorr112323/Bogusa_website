@@ -120,10 +120,11 @@ function fetchComments(responseIds) {
 /**
  * Основная агрегация.
  * @param {object} filters teacherId/disciplineId/topicId/formType/from/to
- * @param {object} options { enforceMinimum: boolean, includeComments: boolean }
+ * @param {object} options { enforceMinimum, includeComments, since } - since включает поле is_new
  */
 function aggregate(filters = {}, options = {}) {
-  const { enforceMinimum = true, includeComments = true } = options;
+  const { enforceMinimum = true, includeComments = true, since = null } = options;
+  // since: строка-момент последнего просмотра ('' - просмотр ещё не отмечался)
   const filter = buildFilter(filters);
   const responses = fetchResponses(filter);
 
@@ -236,6 +237,9 @@ function aggregate(filters = {}, options = {}) {
           id: row.id,
           body: row.body,
           created_date: row.created_date,
+          // что пришло после последнего захода преподавателя в отчёт;
+          // пустой since - преподаватель ещё не отмечал просмотр, тогда новые все
+          is_new: since !== null && typeof row.created_at === 'string' && row.created_at > since,
           discipline_title: row.discipline_title,
           topic_title: row.topic_title,
           lesson_date: row.lesson_date,
