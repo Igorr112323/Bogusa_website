@@ -351,13 +351,36 @@ test('главная студента: две плитки-двери на ди�
   assert.ok(!script.includes('discipline-select'), 'селекта на главной нет и в скрипте');
 });
 
-test('анкета студента: выбор дисциплины и темы остается в выпадающих списках', async () => {
+test('анкета студента: списки дисциплины и темы по порядку, вид анкеты - кнопками', async () => {
   const form = await call('GET', '/form.html');
   assert.equal(form.status, 200);
   assert.ok(form.text.includes('<select'), 'на странице анкеты есть выпадающие списки');
   assert.ok(form.text.includes('id="discipline-select"'), 'есть список дисциплин');
   assert.ok(form.text.includes('id="topic-select"'), 'есть список тем занятия');
   assert.ok(!/<input(?![^>]*type="hidden")[^>]*type="(text|search)"/i.test(form.text), 'ручного ввода нет');
+
+  // список "Анкета" заменён переключателем из двух кнопок
+  assert.ok(!form.text.includes('id="form-select"'), 'выпадающего списка с видами анкет больше нет');
+  assert.ok(!form.text.includes('<label class="label" for="form-select">'), 'его подписи тоже нет');
+  assert.ok(form.text.includes('id="form-switch"'), 'есть контейнер переключателя');
+  assert.ok(
+    form.text.indexOf('id="discipline-select"') < form.text.indexOf('id="topic-field"'),
+    'сначала дисциплина'
+  );
+  assert.ok(
+    form.text.indexOf('id="topic-field"') < form.text.indexOf('id="form-switch"'),
+    'затем тема занятия, и только потом кнопки вида анкеты'
+  );
+
+  const script = read('public/js/form.js');
+  assert.ok(script.includes('btn-switch'), 'кнопки рисуются form.js');
+  assert.ok(script.includes('aria-pressed'), 'выбор кнопки обозначен через aria-pressed');
+  assert.ok(!script.includes('fillFormSelect'), 'старый список анкеты удалён вместе с кодом');
+
+  const styles = read('public/css/styles.css');
+  assert.match(styles, /\.btn-switch \{\n  min-height: 60px;/, 'кнопки крупные, не менее 60px');
+  assert.match(styles, /\.btn-switch\[aria-pressed='true'\] \{\n  --btn-bg: var\(--brand-700\);/, 'активная кнопка индиго');
+  assert.match(styles, /\.form-switch \{[\s\S]*?grid-template-columns: 1fr;/, 'на мобильном кнопки столбиком');
 });
 
 /* ------------------------- дизайн-система и отказ от блоков ------------------------- */

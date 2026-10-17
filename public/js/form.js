@@ -28,7 +28,7 @@ const titleNode = document.querySelector('#form-title');
 const alertsNode = document.querySelector('#alerts');
 const surveyNode = document.querySelector('#survey');
 const disciplineSelect = document.querySelector('#discipline-select');
-const formSelect = document.querySelector('#form-select');
+const formSwitch = document.querySelector('#form-switch');
 const topicField = document.querySelector('#topic-field');
 const topicSelect = document.querySelector('#topic-select');
 
@@ -60,9 +60,26 @@ function fillDisciplineSelect() {
   disciplineSelect.value = state.discipline ? String(state.discipline.id) : '';
 }
 
-function fillFormSelect() {
-  mount(formSelect, state.forms.map((form) => el('option', { text: form.shortTitle, attrs: { value: form.key } })));
-  formSelect.value = state.formType || '';
+/** Две крупные кнопки вместо выпадающего списка: переключатель вида анкеты. */
+function fillFormSwitch() {
+  mount(
+    formSwitch,
+    state.forms.map((form) =>
+      el('button', {
+        class: 'btn btn-switch',
+        attrs: { type: 'button', 'aria-pressed': String(state.formType === form.key) },
+        dataset: { form: form.key },
+        text: form.shortTitle,
+        on: { click: () => onFormPick(form.key) },
+      })
+    )
+  );
+}
+
+function updateFormSwitch() {
+  for (const node of formSwitch.querySelectorAll('.btn-switch')) {
+    node.setAttribute('aria-pressed', String(node.dataset.form === state.formType));
+  }
 }
 
 function fillTopicSelect() {
@@ -322,15 +339,17 @@ async function onDisciplineChange() {
   renderSurvey();
 }
 
-async function onFormChange() {
+async function onFormPick(formType) {
+  if (!formType || formType === state.formType) return;
   alertBox('');
   resetAnswers();
   try {
-    await selectFormType(formSelect.value);
+    await selectFormType(formType);
   } catch (error) {
     alertBox(error.message, 'danger');
     return;
   }
+  updateFormSwitch();
   setParams({ form: state.formType });
   renderSurvey();
 }
@@ -348,7 +367,6 @@ function onTopicChange() {
 
 async function init() {
   disciplineSelect.addEventListener('change', onDisciplineChange);
-  formSelect.addEventListener('change', onFormChange);
   topicSelect.addEventListener('change', onTopicChange);
 
   try {
@@ -375,7 +393,7 @@ async function init() {
   fillDisciplineSelect();
 
   state.formType = ['lesson', 'final'].includes(qsParam('form')) ? qsParam('form') : state.forms[0].key;
-  fillFormSelect();
+  fillFormSwitch();
 
   if (state.disciplines.length === 0) {
     alertBox('Анкетирование пока не открыто.', 'warn');
@@ -403,6 +421,7 @@ async function init() {
     alertBox(error.message, 'danger');
     return;
   }
+  updateFormSwitch();
 
   const topicParam = qsParam('topic');
   if (topicParam && state.formType === 'lesson') {

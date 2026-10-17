@@ -1011,6 +1011,49 @@ a:hover {
   margin-top: var(--space-4);
 }
 
+/* Переключатель вида анкеты: две крупные кнопки (1 колонка, 2 от 560px).
+   Активная - плоская индиговая, неактивная при наведении - янтарная. */
+.form-switch {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: 1fr;
+  margin-top: var(--space-3);
+}
+
+@media (min-width: 560px) {
+  .form-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.btn-switch {
+  min-height: 60px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 1rem;
+  font-weight: 700;
+  white-space: normal;
+}
+
+.btn-switch[aria-pressed='true'] {
+  --btn-bg: var(--brand-700);
+  --btn-fg: #fff;
+  --btn-border: var(--brand-700);
+}
+
+.btn-switch[aria-pressed='true']:hover {
+  --btn-bg: var(--brand-800);
+  --btn-border: var(--brand-800);
+  filter: none;
+}
+
+.btn-switch:not([aria-pressed='true']):hover {
+  --btn-bg: var(--accent-500);
+  --btn-fg: #fff;
+  --btn-border: var(--accent-500);
+  filter: none;
+}
+
 #picker .field:last-of-type {
   margin-bottom: 0;
 }
