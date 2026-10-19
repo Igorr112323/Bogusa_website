@@ -552,6 +552,18 @@ const MAX_TITLE = 200;
 /** Дисциплина, в чьё поле добавления темы вернуть фокус после перерисовки. */
 let focusTopicFor = null;
 
+/**
+ * Свёрнутые карточки дисциплин. По умолчанию всё открыто; состояние живёт до
+ * перезагрузки страницы - в хранилище браузера кабинет ничего не пишет.
+ */
+const collapsedCards = new Set();
+
+function toggleCollapsed(disciplineId) {
+  if (collapsedCards.has(disciplineId)) collapsedCards.delete(disciplineId);
+  else collapsedCards.add(disciplineId);
+  renderCatalog();
+}
+
 /** Подпись поля: label с for, когда у поля есть id, иначе обычная подпись. */
 function fieldRow(label, node, forId = null) {
   const caption = label
@@ -566,7 +578,6 @@ function createDisciplineCard() {
     class: 'input',
     attrs: { type: 'text', id: 'new-discipline-title', placeholder: 'Например: Базы данных', maxlength: String(MAX_TITLE) },
   });
-  const code = el('input', { class: 'input', attrs: { type: 'text', id: 'new-discipline-code', placeholder: 'Необязательно', maxlength: '40' } });
   const submit = el('button', {
     class: 'btn btn-primary',
     text: 'Создать дисциплину',
@@ -577,10 +588,9 @@ function createDisciplineCard() {
         if (value.length < 2) return toast('Название дисциплины: минимум 2 символа', 'danger');
         setLoading(submit, true, 'Создаём…');
         try {
-          await api.post('/api/teacher/disciplines', { title: value, code: code.value.trim() || null });
+          await api.post('/api/teacher/disciplines', { title: value });
           toast('Дисциплина создана', 'ok');
           title.value = '';
-          code.value = '';
           await afterCatalogChange();
         } catch (error) {
           toast(error.message, 'danger');
@@ -591,31 +601,22 @@ function createDisciplineCard() {
     },
   });
 
-  const onEnter = (event) => {
+  title.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       submit.click();
     }
-  };
-  title.addEventListener('keydown', onEnter);
-  code.addEventListener('keydown', onEnter);
+  });
 
   return el('div', { class: 'card card-tight' }, [
     el('div', { class: 'catalog-form-head' }, [
       el('h3', { text: 'Новая дисциплина' }),
-      el('span', { class: 'tiny muted', text: 'название обязательно, код - по желанию' }),
+      el('span', { class: 'tiny muted', text: 'название от 2 символов' }),
     ]),
     el('div', { class: 'catalog-add' }, [
-      fieldRow('Название', title, 'new-discipline-title'),
-      fieldRow('Код', code, 'new-discipline-code'),
+      fieldRow('Название дисциплины', title, 'new-discipline-title'),
       fieldRow(null, submit),
     ]),
-    el('p', {
-      class: 'hint',
-      text: state.user.role === 'admin'
-        ? 'Дисциплина закрепляется за вами; назначить другого преподавателя можно в админ-панели.'
-        : 'Дисциплина сразу закрепляется за вами. Отключить или удалить её может только администратор.',
-    }),
   ]);
 }
 
@@ -628,6 +629,7 @@ async function afterCatalogChange() {
   }
   await renderCatalog();
   window.scrollTo(0, scrollY);
+  if (focusTopicFor !== null && collapsedCards.has(focusTopicFor)) focusTopicFor = null;
   if (focusTopicFor !== null) {
     const node = document.querySelector(`#topic-title-${focusTopicFor}`);
     focusTopicFor = null;
@@ -637,10 +639,9 @@ async function afterCatalogChange() {
 
 function renameDiscipline(discipline) {
   const title = el('input', { class: 'input', attrs: { type: 'text', value: discipline.title, maxlength: String(MAX_TITLE) } });
-  const code = el('input', { class: 'input', attrs: { type: 'text', value: discipline.code || '', maxlength: '40' } });
   modal({
     title: 'Дисциплина',
-    content: el('div', {}, [fieldRow('Название', title), fieldRow('Код', code)]),
+    content: fieldRow('Название', title),
     actions: [
       { label: 'Отмена', class: 'btn-ghost' },
       {
@@ -648,10 +649,7 @@ function renameDiscipline(discipline) {
         class: 'btn-primary',
         onClick: async () => {
           try {
-            await api.patch(`/api/teacher/disciplines/${discipline.id}`, {
-              title: title.value.trim(),
-              code: code.value.trim() || null,
-            });
+            await api.patch(`/api/teacher/disciplines/${discipline.id}`, { title: title.value.trim() });
             toast('Дисциплина обновлена', 'ok');
             await afterCatalogChange();
           } catch (error) {
@@ -710,26 +708,9 @@ async function toggleTopic(topic) {
   }
 }
 
-/** Список занятий сразу: одна тема в строке, дата через вертикальную черту. */
-/** Разбор списка: одна тема в строке, дату можно поставить перед названием через |. */
-function parseTopicLines(text) {
-  return String(text || '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 100)
-    .map((line) => {
-      const [left, ...rest] = line.split('|');
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(left.trim()) ? left.trim() : null;
-      const title = (date ? rest.join('|').trim() : line).trim();
-      return { title, lesson_date: date };
-    })
-    .filter((item) => item.title.length >= 2);
-}
-
 /**
- * Добавление занятий: по одному и списком сразу. После добавления фокус возвращается
- * в поле названия, а дата остаётся - так семестр вводится не отрываясь.
+ * Добавление занятия: дата остаётся в поле, фокус возвращается в название,
+ * поэтому список занятий за семестр вводится не отрываясь.
  */
 function topicAddForm(discipline) {
   const title = el('input', {
@@ -785,68 +766,17 @@ function topicAddForm(discipline) {
   title.addEventListener('keydown', onEnter);
   date.addEventListener('keydown', onEnter);
 
-  const area = el('textarea', {
-    class: 'textarea',
-    attrs: {
-      rows: '5',
-      id: `topic-bulk-${discipline.id}`,
-      placeholder: '2026-09-02 | Введение и правила оценки\n2026-09-09 | Запросы на языке SQL\nПроектирование схемы базы данных',
-    },
-  });
-  const counter = el('span', { class: 'tiny muted', text: 'строк для добавления: 0' });
-  const repaint = () => {
-    const count = parseTopicLines(area.value).length;
-    counter.textContent = `строк для добавления: ${count}`;
-    bulk.disabled = count === 0;
-  };
-  area.addEventListener('input', repaint);
-
-  const bulk = el('button', {
-    class: 'btn btn-primary',
-    text: 'Добавить список',
-    attrs: { type: 'button' },
-    on: {
-      click: async () => {
-        const items = parseTopicLines(area.value);
-        if (items.length === 0) {
-          toast('Список пуст: у каждой темы должно быть название от 2 символов', 'danger');
-          area.focus();
-          return;
-        }
-        setLoading(bulk, true, 'Добавляем…');
-        try {
-          const result = await api.post(`/api/teacher/disciplines/${discipline.id}/topics/bulk`, { topics: items });
-          area.value = '';
-          repaint();
-          focusTopicFor = discipline.id;
-          toast(`Добавлено занятий: ${result.created}`, 'ok');
-          await afterCatalogChange();
-        } catch (error) {
-          toast(error.message, 'danger');
-        } finally {
-          setLoading(bulk, false);
-        }
-      },
-    },
-  });
-  bulk.disabled = true;
-
   return el('div', { class: 'catalog-form' }, [
-    el('div', { class: 'catalog-form-col' }, [
+    el('div', { class: 'catalog-form-head' }, [
       el('h3', { text: 'Добавить занятие' }),
-      el('p', { class: 'hint', text: 'Enter тоже добавляет. Дату можно не ставить - тогда тема попадёт в конец списка.' }),
-      el('div', { class: 'catalog-add' }, [
-        fieldRow('Название занятия', title, `topic-title-${discipline.id}`),
-        fieldRow('Дата занятия', date, `topic-date-${discipline.id}`),
-        fieldRow(null, submit),
-      ]),
+      el('span', { class: 'tiny muted', text: 'Enter тоже добавляет' }),
     ]),
-    el('div', { class: 'catalog-form-col' }, [
-      el('h3', { text: 'Добавить несколько сразу' }),
-      el('p', { class: 'hint', text: 'Одна тема в строке. Дату можно поставить перед названием через вертикальную черту.' }),
-      area,
-      el('div', { class: 'catalog-bulk-row' }, [counter, bulk]),
+    el('div', { class: 'catalog-add' }, [
+      fieldRow('Название занятия', title, `topic-title-${discipline.id}`),
+      fieldRow('Дата занятия', date, `topic-date-${discipline.id}`),
+      fieldRow(null, submit),
     ]),
+    el('p', { class: 'hint', text: 'Дату можно не ставить - тогда занятие попадёт в конец списка.' }),
   ]);
 }
 
@@ -931,14 +861,27 @@ function disciplineCard(discipline) {
   const topics = discipline.topics || [];
   const activeTopics = topics.filter((t) => t.is_active).length;
   const answered = topics.reduce((acc, t) => acc + (t.responses ?? 0), 0);
+  const collapsed = collapsedCards.has(discipline.id);
+  const bodyId = `catalog-body-${discipline.id}`;
 
   return el('section', { class: 'section' }, [
-    el('div', { class: 'card' }, [
+    el('div', { class: collapsed ? 'card discipline-card is-collapsed' : 'card discipline-card' }, [
       el('div', { class: 'catalog-head' }, [
-        el('div', {}, [
-          el('h2', { text: discipline.title }),
+        el('div', { class: 'catalog-title-col' }, [
+          el('button', {
+            class: 'catalog-toggle',
+            attrs: {
+              type: 'button',
+              'aria-expanded': collapsed ? 'false' : 'true',
+              'aria-controls': bodyId,
+              title: collapsed ? 'Развернуть список занятий' : 'Свернуть список занятий',
+            },
+            on: { click: () => toggleCollapsed(discipline.id) },
+          }, [
+            el('span', { class: 'caret' }),
+            el('span', { class: 'catalog-title', text: discipline.title }),
+          ]),
           el('div', { class: 'catalog-meta' }, [
-            discipline.code ? el('span', { text: `код: ${discipline.code}` }) : null,
             el('span', { text: `занятий: ${topics.length}` }),
             el('span', { text: `активных: ${activeTopics}` }),
             el('span', { text: `анкет по темам: ${answered}` }),
@@ -983,8 +926,7 @@ function disciplineCard(discipline) {
           }),
         ]),
       ]),
-      topicsTable(discipline),
-      topicAddForm(discipline),
+      el('div', { class: 'catalog-body', attrs: { id: bodyId } }, [topicsTable(discipline), topicAddForm(discipline)]),
     ]),
   ]);
 }
@@ -1008,12 +950,6 @@ async function renderCatalog() {
         }),
       ]),
       createDisciplineCard(),
-      state.disciplines.length > 0
-        ? el('p', {
-            class: 'hint catalog-note',
-            text: 'У дисциплины ниже - список занятий и два способа их добавить: по одному или списком сразу. Ссылку для группы даёт кнопка Ссылка.',
-          })
-        : null,
       ...state.disciplines.map(disciplineCard),
     ]);
   } catch (error) {

@@ -658,9 +658,56 @@ table.table {
   margin-bottom: var(--space-4);
 }
 
-.catalog-head h2 {
-  margin: 0;
+.catalog-title-col {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* Заголовок-переключатель: клик по названию сворачивает или разворачивает карточку */
+.catalog-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.catalog-toggle:hover .catalog-title,
+.catalog-toggle:focus-visible .catalog-title {
+  color: var(--brand-700);
+}
+
+.catalog-title {
   font-size: 1.16rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 6px solid var(--text-muted);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  transition: transform 0.15s ease;
+}
+
+.discipline-card:not(.is-collapsed) .caret {
+  transform: rotate(90deg);
+}
+
+.discipline-card.is-collapsed .catalog-body {
+  display: none;
+}
+
+.discipline-card.is-collapsed .catalog-head {
+  margin-bottom: 0;
 }
 
 .catalog-meta {
@@ -696,35 +743,12 @@ table.table {
   margin: 4px 0 0;
 }
 
-/* Блок добавления занятий: два способа рядом, каждый со своей подписью */
+/* Блок добавления занятия: подпись, поля и одна кнопка */
 .catalog-form {
-  display: grid;
-  gap: var(--space-4);
   margin-top: var(--space-4);
   padding: var(--space-4);
   background: var(--surface-2);
   border-radius: var(--radius);
-}
-
-@media (min-width: 1000px) {
-  .catalog-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-}
-
-.catalog-form-col {
-  min-width: 0;
-}
-
-.catalog-form h3,
-.catalog-form-head h3 {
-  margin: 0 0 2px;
-  font-size: 1rem;
-}
-
-.catalog-form .hint {
-  margin: 0 0 var(--space-3);
 }
 
 .catalog-form-head {
@@ -732,7 +756,6 @@ table.table {
   align-items: baseline;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: var(--space-2);
 }
 
 .catalog-form-head h3 {
@@ -741,22 +764,13 @@ table.table {
 }
 
 .catalog-form .catalog-add {
-  margin-top: 0;
+  margin-top: var(--space-3);
   padding-top: 0;
   border-top: none;
 }
 
-.catalog-bulk-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  margin-top: var(--space-2);
-}
-
-.catalog-note {
-  margin: 0 0 var(--space-4);
+.catalog-form > .hint {
+  margin: var(--space-2) 0 0;
 }
 
 .table .row-off td {

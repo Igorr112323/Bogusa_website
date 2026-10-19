@@ -506,13 +506,38 @@ test('отчёт преподавателя: дисциплина, две кру
 
 test('мои темы: преподаватель ведёт дисциплины и занятия, но не удаляет', () => {
   const portal = read('public/js/portal.js');
-  for (const route of ['/api/teacher/disciplines', '/api/teacher/topics', '/topics/bulk', '/api/teacher/seen']) {
+  for (const route of ['/api/teacher/disciplines', '/api/teacher/topics', '/api/teacher/seen']) {
     assert.ok(portal.includes(route), `в кабинете нет обращения к ${route}`);
   }
   assert.ok(portal.includes("'Создать дисциплину'") || portal.includes("'Создать дисциплину',"), 'есть форма создания дисциплины');
-  assert.ok(portal.includes('Добавить занятие'), 'темы добавляются по одной и списком');
+  assert.ok(portal.includes('Добавить занятие'), 'темы добавляются по одной');
   assert.ok(!portal.includes('api.del('), 'из кабинета ничего не удаляется - это право администратора');
   assert.ok(!portal.includes('/api/admin'), 'кабинет преподавателя не пользуется админским API');
+});
+
+test('мои темы: массовое добавление, код дисциплины и пояснительные тексты убраны', () => {
+  const portal = read('public/js/portal.js');
+  assert.ok(!portal.includes('/topics/bulk'), 'преподаватель не добавляет темы списком');
+  assert.ok(!portal.includes('topic-bulk') && !portal.includes('textarea'), 'в кабинете преподавателя нет поля для списка тем');
+  assert.ok(!portal.includes('Добавить несколько сразу'), 'второй способ добавления убран');
+  assert.ok(!portal.includes('new-discipline-code') && !portal.includes("fieldRow('Код'"), 'код дисциплины в кабинете не вводится');
+  assert.ok(!portal.includes('код: '), 'код дисциплины не показывается в шапке карточки');
+  for (const removed of ['Дисциплина сразу закрепляется за вами', 'У дисциплины ниже', 'catalog-note']) {
+    assert.ok(!portal.includes(removed), `подсказка убрана: ${removed}`);
+  }
+});
+
+test('мои темы: карточка дисциплины сворачивается по клику на названии', () => {
+  const portal = read('public/js/portal.js');
+  const dash = read('public/css/dashboard.css');
+  for (const needle of ['catalog-toggle', 'collapsedCards', 'toggleCollapsed', 'is-collapsed', 'aria-expanded', 'aria-controls']) {
+    assert.ok(portal.includes(needle), `в карточке дисциплины нет ${needle}`);
+  }
+  assert.ok(!portal.includes('localStorage') && !portal.includes('sessionStorage'), 'состояние сворачивания нигде не сохраняется');
+  assert.ok(!portal.includes('<h2'), 'название карточки - не заголовок внутри кнопки');
+  assert.match(dash, /\.discipline-card\.is-collapsed \.catalog-body \{\n  display: none;/, 'содержимое свёрнутой карточки скрыто');
+  assert.match(dash, /\.discipline-card:not\(\.is-collapsed\) \.caret \{\n  transform: rotate\(90deg\);/, 'стрелка поворачивается');
+  assert.ok(!dash.includes('.catalog-form-col') && !dash.includes('.catalog-bulk-row'), 'стили двухколоночного блока добавления убраны');
 });
 
 test('убранные блоки не возвращаются', () => {
