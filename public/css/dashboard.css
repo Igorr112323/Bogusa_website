@@ -696,6 +696,69 @@ table.table {
   margin: 4px 0 0;
 }
 
+/* Блок добавления занятий: два способа рядом, каждый со своей подписью */
+.catalog-form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+@media (min-width: 1000px) {
+  .catalog-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.catalog-form-col {
+  min-width: 0;
+}
+
+.catalog-form h3,
+.catalog-form-head h3 {
+  margin: 0 0 2px;
+  font-size: 1rem;
+}
+
+.catalog-form .hint {
+  margin: 0 0 var(--space-3);
+}
+
+.catalog-form-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.catalog-form-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.catalog-form .catalog-add {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.catalog-bulk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.catalog-note {
+  margin: 0 0 var(--space-4);
+}
+
 .table .row-off td {
   color: var(--text-muted);
 }

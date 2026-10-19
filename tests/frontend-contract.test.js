@@ -374,6 +374,7 @@ test('анкета студента: списки дисциплины и тем
 
   const script = read('public/js/form.js');
   assert.ok(script.includes('btn-switch'), 'кнопки рисуются form.js');
+  assert.ok(!script.includes('topicField.hidden'), 'поле темы занятия не скрывается при переключении анкеты');
   assert.ok(script.includes('aria-pressed'), 'выбор кнопки обозначен через aria-pressed');
   assert.ok(!script.includes('fillFormSelect'), 'старый список анкеты удалён вместе с кодом');
 

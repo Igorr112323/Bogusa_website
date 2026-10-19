@@ -29,7 +29,6 @@ const alertsNode = document.querySelector('#alerts');
 const surveyNode = document.querySelector('#survey');
 const disciplineSelect = document.querySelector('#discipline-select');
 const formSwitch = document.querySelector('#form-switch');
-const topicField = document.querySelector('#topic-field');
 const topicSelect = document.querySelector('#topic-select');
 
 /* ------------------------------ вспомогательное ------------------------------ */
@@ -172,8 +171,8 @@ function surveyReady() {
 
 function renderSurvey() {
   const needsTopic = state.formType === 'lesson';
-  topicField.hidden = !needsTopic;
-
+  // Поле темы занятия не прячется при переключении вида анкеты: список тем и
+  // выбранный пункт остаются на месте и для итоговой анкеты.
   if (!state.form) {
     clear(surveyNode);
     return;
@@ -355,11 +354,14 @@ async function onFormPick(formType) {
 }
 
 function onTopicChange() {
-  alertBox('');
-  resetAnswers();
   const id = Number(topicSelect.value);
   state.topic = state.topics.find((t) => t.id === id) || null;
   setParams({ topic: state.topic ? state.topic.id : null });
+  // Для итоговой анкеты тема - только отметка в адресе: вопросы те же,
+  // поэтому ответы не сбрасываем и перерисовку не делаем.
+  if (state.formType !== 'lesson') return;
+  alertBox('');
+  resetAnswers();
   renderSurvey();
 }
 
