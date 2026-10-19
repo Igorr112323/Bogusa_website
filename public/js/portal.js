@@ -127,19 +127,6 @@ function statCard(label, value, sub) {
 /** Тема занятия в списках: сначала дата, потом название. */
 const topicLabel = (topic) => (topic.lesson_date ? `${topic.lesson_date} · ${topic.title}` : topic.title);
 
-const isoDay = (date) => date.toISOString().slice(0, 10);
-
-/** Начало периода по быстрой кнопке: N дней назад или начало текущего семестра. */
-function rangeStart(kind) {
-  const now = new Date();
-  if (kind === 'week') return isoDay(new Date(now.getTime() - 6 * 86400000));
-  if (kind === 'month') return isoDay(new Date(now.getTime() - 29 * 86400000));
-  const month = now.getMonth();
-  if (month >= 8) return `${now.getFullYear()}-09-01`;
-  if (month <= 1) return `${now.getFullYear()}-02-01`;
-  return `${now.getFullYear() - 1}-09-01`;
-}
-
 async function reloadDisciplines() {
   const data = await api.get('/api/teacher/disciplines');
   state.disciplines = data.disciplines || [];
@@ -222,14 +209,6 @@ function pickerCard(discipline, onChange) {
       }),
     ]);
 
-  const quick = (label, kind) =>
-    el('button', {
-      class: 'btn btn-sm btn-ghost',
-      text: label,
-      attrs: { type: 'button' },
-      on: { click: () => pick({ from: kind ? rangeStart(kind) : '', to: '' }) },
-    });
-
   return el('div', { class: 'card card-tight report-picker' }, [
     el('div', { class: 'field' }, [
       el('label', { class: 'label', text: 'Дисциплина', attrs: { for: 'filter-discipline' } }),
@@ -244,22 +223,7 @@ function pickerCard(discipline, onChange) {
           ])
         : el('p', { class: 'hint', text: 'Тем у дисциплины пока нет - добавьте их в разделе Мои темы, и список занятий появится здесь.' })
       : null,
-    el('div', { class: 'report-dates' }, [
-      dateField('С даты', 'from'),
-      dateField('По дату', 'to'),
-      el('div', { class: 'quick-dates' }, [quick('Неделя', 'week'), quick('Месяц', 'month'), quick('Семестр', 'term'), quick('Всё время', null)]),
-      el('button', {
-        class: 'btn btn-sm btn-ghost',
-        text: 'Сбросить фильтры',
-        attrs: { type: 'button' },
-        on: {
-          click: () => {
-            state.filters = { disciplineId: discipline.id, topicId: null, formType: state.filters.formType, from: '', to: '' };
-            onChange();
-          },
-        },
-      }),
-    ]),
+    el('div', { class: 'report-dates' }, [dateField('С даты', 'from'), dateField('По дату', 'to')]),
   ]);
 }
 
@@ -399,54 +363,7 @@ function commentsCard(report) {
   return el('section', { class: 'section' }, [card]);
 }
 
-/** Разбивка по занятиям дисциплины: строка темы с переходом в её отчёт. */
-function lessonsSection(report, onOpen) {
-  if (report.topic || state.filters.formType !== 'lesson' || !report.lessons || report.lessons.length === 0) return null;
-
-  return el('section', { class: 'section' }, [
-    el('div', { class: 'section-title' }, [
-      el('h2', { text: 'По занятиям' }),
-      el('span', { class: 'tiny muted', text: 'нажмите на занятие, чтобы открыть его отчёт' }),
-    ]),
-    el('div', { class: 'table-wrap' }, [
-      el('table', { class: 'table' }, [
-        el('thead', {}, [
-          el('tr', {}, [
-            el('th', { text: 'Тема занятия' }),
-            el('th', { class: 'num', text: 'Дата' }),
-            el('th', { class: 'num', text: 'Анкет' }),
-            el('th', { class: 'num', text: 'Средний балл' }),
-            el('th', { class: 'num', text: '' }),
-          ]),
-        ]),
-        el(
-          'tbody',
-          {},
-          report.lessons.map((lesson) =>
-            el('tr', {}, [
-              el('td', { text: lesson.topic_title || '-' }),
-              el('td', { class: 'num', text: lesson.lesson_date ? fmtDate(lesson.lesson_date) : '-' }),
-              el('td', { class: 'num', text: String(lesson.responses) }),
-              el('td', { class: 'num' }, [
-                el('span', { class: scoreClass(lesson.avg), text: lesson.avg === null ? '-' : fmtNum(lesson.avg, 2) }),
-              ]),
-              el('td', { class: 'num' }, [
-                el('button', {
-                  class: 'btn btn-sm btn-ghost',
-                  text: 'Открыть',
-                  attrs: { type: 'button' },
-                  on: { click: () => onOpen(lesson) },
-                }),
-              ]),
-            ])
-          )
-        ),
-      ]),
-    ]),
-  ]);
-}
-
-/** Ссылка на анкету с нужными фильтрами: её можно скопировать или открыть. */
+/** Ссылка на анкету с фильтрами: используется в разделе Мои темы. */
 function studentLink(disciplineId, topicId, formType) {
   return studentUrl('/form.html', {
     discipline: disciplineId,
@@ -615,19 +532,6 @@ async function renderReport() {
         ])
       ),
       commentsCard(report),
-      lessonsSection(report, (lesson) => {
-        state.filters.topicId = lesson.topic_id;
-        state.filters.disciplineId = lesson.discipline_id;
-        state.filters.formType = 'lesson';
-        onChange();
-      }),
-      el('section', { class: 'section' }, [
-        el('div', { class: 'section-title' }, [
-          el('h2', { text: 'Ссылка для студентов' }),
-          el('span', { class: 'tiny muted', text: 'ведёт на анкету с уже выбранными дисциплиной и темой' }),
-        ]),
-        linkRow(state.filters.disciplineId, state.filters.topicId, state.filters.formType),
-      ]),
     ]);
 
     markSeen();

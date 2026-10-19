@@ -381,6 +381,11 @@ test('анкета студента: списки дисциплины и тем
   assert.match(styles, /\.btn-switch \{\n  min-height: 60px;/, 'кнопки крупные, не менее 60px');
   assert.match(styles, /\.btn-switch\[aria-pressed='true'\] \{\n  --btn-bg: var\(--brand-700\);/, 'активная кнопка индиго');
   assert.match(styles, /\.form-switch \{[\s\S]*?grid-template-columns: 1fr;/, 'на мобильном кнопки столбиком');
+  assert.match(
+    styles,
+    /#survey form > \.btn \{\n  display: flex;\n  width: auto;\n  min-width: 240px;\n  margin: var\(--space-5\) auto 0;/,
+    'кнопка «Отправить» центрирована в форме',
+  );
 });
 
 /* ------------------------- дизайн-система и отказ от блоков ------------------------- */
@@ -483,7 +488,9 @@ test('отчёт преподавателя: дисциплина, две кру
   assert.ok(/function formSwitch[\s\S]*?class: 'form-switch'[\s\S]*?btn-switch/.test(portal), 'вид анкеты - кнопки в группе form-switch, а не select');
   assert.ok(portal.includes("'aria-pressed'") && portal.includes('btn-switch'), 'активная кнопка помечена aria-pressed');
   assert.ok(/type: 'date'/.test(portal), 'период задаётся двумя датами');
-  assert.ok(portal.includes("quick('Семестр'") && portal.includes("quick('Всё время'"), 'есть быстрые периоды');
+  for (const gone of ['quick-dates', 'Сбросить фильтры', 'По занятиям', 'lessonsSection', "text: 'Ссылка для студентов'"]) {
+    assert.ok(!portal.includes(gone), `в отчёте больше нет блока ${gone}`);
+  }
   assert.ok(portal.includes("'Всего анкет'") && portal.includes("'Средний балл'"), 'статистика считается по выбранному периоду');
   assert.ok(!portal.includes('timelineChart') && !portal.includes('Динамика'), 'графика динамики из кабинета убран');
   assert.ok(portal.includes('Комментарии студентов') && portal.includes("class: 'comment-row'"), 'комментарии - строками, а не сплошным списком');

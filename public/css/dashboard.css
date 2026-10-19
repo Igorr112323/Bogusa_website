@@ -537,13 +537,6 @@ table.table {
   min-width: 150px;
 }
 
-.quick-dates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
 /* ------------------------------ Комментарии студентов ------------------------------ */
 
 .comments-head {
