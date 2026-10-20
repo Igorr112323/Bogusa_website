@@ -772,7 +772,8 @@ ssh root@IP-адрес "command -v git >/dev/null || apt-get -y install git; git
    и конфиг nginx с `proxy_set_header Host $host`. С `DOMAIN` добавляется certbot, и после выдачи
    сертификата скрипт сам ставит `COOKIE_SECURE=true` и `PUBLIC_BASE_URL=https://...`.
 9. `deploy/backup.sh` в `/usr/local/bin/feedback-backup` и `/etc/cron.d/feedback-backup`
-   (03:00, 14 копий, каждая проверяется `PRAGMA integrity_check`).
+   (03:00, 14 копий, каждая проверяется `PRAGMA integrity_check`); первая копия делается
+   сразу же, не дожидаясь ночи: ответы студентов на сервере существуют в единственном экземпляре.
 
 Режимы запуска:
 

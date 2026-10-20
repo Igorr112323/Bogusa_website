@@ -519,6 +519,16 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EOF
 chmod 644 "$(p /etc/cron.d/feedback-backup)"
 
+# первая копия - сразу, не дожидаясь 03:00: сервер rented, на нём единственный экземпляр ответов
+first_backup="копий ещё нет"
+if [ "$DRY_RUN" != "1" ] && [ -f "$APP_DIR/data/feedback.sqlite" ]; then
+  if APP_DIR="$APP_DIR" /usr/local/bin/feedback-backup > /tmp/feedback-backup.log 2>&1; then
+    first_backup="$(tail -n 1 /tmp/feedback-backup.log)"
+  else
+    first_backup="не сделалась: $(tail -n 2 /tmp/feedback-backup.log | tr '\n' ' ')"
+  fi
+fi
+
 # --- Итог --------------------------------------------------------------------
 echo
 echo "=================================================================="
@@ -549,6 +559,8 @@ else
 fi
 echo "  Логин администратора: admin, пароль - в файле $APP_DIR/.deploy-admin-password"
 echo "                        (cat $APP_DIR/.deploy-admin-password)"
-echo "  Бэкапы:  $ROOT_PREFIX/var/backups/feedback (ежедневно в 03:00); скопируйте хотя бы раз в неделю к себе"
+echo "  Бэкапы:  $first_backup"
+echo "           копии в /var/backups/feedback, ежедневно в 03:00. Раз в неделю забирайте их к себе:"
+echo "           в PowerShell:  scp root@$(hostname -I 2>/dev/null | awk '{print $1}'):/var/backups/feedback/feedback-*.sqlite.gz ." 
 echo "  Проверка безопасности: cd $APP_DIR && npm run secaudit -- --student $SCHEME://$BASE_HOST --staff http://127.0.0.1:$STAFF_PORT_ENV"
 echo "=================================================================="

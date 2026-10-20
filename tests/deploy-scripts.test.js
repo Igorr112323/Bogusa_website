@@ -262,6 +262,14 @@ test('ошибка внутри скрипта печатается, а не о�
   assert.match(s, /ufw status 2>\/dev\/null \| grep -qE "\^\$\{PUBLISH_PANELS_PORT\}/, 'перед delete проверяем наличие правила');
 });
 
+test('первая копия базы делается сразу, а не к 03:00', () => {
+  const s = read(SETUP);
+  assert.match(s, /APP_DIR="\$APP_DIR" \/usr\/local\/bin\/feedback-backup/);
+  assert.match(s, /-f "\$APP_DIR\/data\/feedback\.sqlite"/, 'копию имеет смысл делать только если база уже есть');
+  assert.match(s, /first_backup="копий ещё нет"/, 'в итоге должна быть честная строка, если копии нет');
+  assert.match(s, /scp root@.*:\/var\/backups\/feedback\/feedback-\*\.sqlite\.gz/);
+});
+
 test('смена пароля администратора доступна командой npm', () => {
   const pkg = JSON.parse(read(path.join(ROOT, 'package.json')));
   assert.equal(pkg.scripts.setadminpass, 'node scripts/set-admin-password.js');
