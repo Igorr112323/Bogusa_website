@@ -731,9 +731,18 @@ Node.js 22, `.env`, база, служба systemd, nginx и ежедневны�
 Ubuntu 22.04/24.04, где вы уже сидите в SSH под `root` (в окне SSH, а не в PowerShell).
 
 ```bash
-git clone https://github.com/ВАШ_ЛОГИН/Bogusa_website.git /opt/feedback
+command -v git >/dev/null || apt-get install -y git    # git нужен до скрипта: им же и скачиваем
+git clone -b main https://github.com/ВАШ_ЛОГИН/Bogusa_website.git /opt/feedback
 cd /opt/feedback
 bash deploy/vps-setup.sh
+```
+
+Команды выше - **в окне SSH на сервере** (Windows: сначала `ssh root@IP-адрес`). В PowerShell они не
+работают: путь `/opt/feedback` там означает папку на диске `C:`, а `&&` PowerShell 5.1 считает
+ошибкой. Если хочется обойтись без второго окна - одной строкой из PowerShell:
+
+```powershell
+ssh root@IP-адрес "command -v git >/dev/null || apt-get -y install git; git clone -b main https://github.com/ВАШ_ЛОГИН/Bogusa_website.git /opt/feedback && cd /opt/feedback && bash deploy/vps-setup.sh"
 ```
 
 Шаги те же, что в нумерации вывода скрипта:
