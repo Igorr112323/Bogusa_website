@@ -365,7 +365,6 @@ function linkRow(disciplineId, topicId, formType) {
   const url = studentLink(disciplineId, topicId, formType);
   const input = el('input', { class: 'input', attrs: { value: url, readonly: true, 'aria-label': 'Ссылка на анкету' } });
   return el('div', { class: 'card' }, [
-    el('p', { class: 'small soft', text: 'Отправьте ссылку группе или откройте анкету с экрана - регистрация студентам не нужна.' }),
     el('div', { class: 'copy-row' }, [
       input,
       el('button', {
@@ -388,10 +387,7 @@ function linkRow(disciplineId, topicId, formType) {
 function modalLink(disciplineId, topicId, formType) {
   modal({
     title: 'Ссылка для студентов',
-    content: el('div', {}, [
-      el('p', { class: 'small soft', text: 'Анкета откроется сразу с этой дисциплиной и темой, которую выбрал преподаватель.' }),
-      linkRow(disciplineId, topicId, formType),
-    ]),
+    content: linkRow(disciplineId, topicId, formType),
     actions: [{ label: 'Закрыть', class: 'btn-ghost' }],
     wide: true,
   });
