@@ -25,8 +25,55 @@
 
 ---
 
+## Скачать, запустить, открыть
+
+### На своём компьютере (Windows, PowerShell)
+
+```powershell
+git clone https://github.com/Igorr112323/Bogusa_website.git
+cd Bogusa_website
+npm install
+copy .env.example .env      # macOS/Linux: cp .env.example .env
+npm run seed -- --demo      # админ, демо-преподаватель, дисциплины, примеры ответов
+npm start
+```
+
+Открыть в браузере:
+
+| Что | Адрес |
+| --- | --- |
+| анкета студентов | http://localhost:3000/ и http://localhost:3000/form.html |
+| вход преподавателя | http://localhost:3001/login |
+| вход администратора | http://localhost:3001/login (логин `admin`) |
+
+На Windows можно проще: двойной клик по `start.ps1` - скрипт сам поставит зависимости,
+создаст `.env` и запустит сервер.
+
+### Боевой сервер (Интернет)
+
+| Кому | Ссылка |
+| --- | --- |
+| студентам | http://80.71.224.161/ и http://80.71.224.161/form.html |
+| преподавателю | http://80.71.224.161:8080/login |
+| администратору | http://80.71.224.161:8090/login |
+
+Пароль администратора хранится на сервере в файле `/opt/anketa/.deploy-admin-password`
+(`ssh root@80.71.224.161 "cat /opt/anketa/.deploy-admin-password"`).
+
+Обновление сервера после изменений в `main` - одна строка в PowerShell:
+
+```powershell
+ssh root@80.71.224.161 "cd /opt/anketa && git fetch -q origin main && git reset -q --hard FETCH_HEAD && PUBLISH_PANELS=1 bash deploy/vps-setup.sh"
+```
+
+`git reset --hard` заменяет только файлы программы: `.env`, база в `data/` и пароли не трогаются.
+В конце скрипт сам проверяет все адреса и печатает коды ответа.
+
+---
+
 ## Содержание
 
+- [Скачать, запустить, открыть](#скачать-запустить-открыть)
 - [Быстрый старт](#быстрый-старт)
 - [Установка на Windows (PowerShell)](#установка-на-windows-powershell--самый-простой-путь)
 - [Роли и сценарии работы](#роли-и-сценарии-работы)
