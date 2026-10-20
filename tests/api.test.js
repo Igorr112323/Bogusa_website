@@ -530,6 +530,79 @@ test('преподаватель не имеет доступа к админс�
   assert.equal(res.status, 403);
 });
 
+test('удаление преподавателя убирает его дисциплины, темы и все ответы', async () => {
+  const created = await adminClient.post('/api/admin/teachers', {
+    login: 'orlova',
+    full_name: 'Орлова Пелагея',
+    password: 'Orlova#2026pass',
+  });
+  assert.equal(created.status, 201);
+  const teacherId = created.json.teacher.id;
+
+  const discipline = await adminClient.post('/api/admin/disciplines', {
+    title: 'Дискретная математика на удаление',
+    teacher_id: teacherId,
+  });
+  assert.equal(discipline.status, 201);
+  const ownDisciplineId = discipline.json.discipline.id;
+
+  const topicIds = [];
+  for (const title of ['Множества', 'Графы']) {
+    const res = await adminClient.post('/api/admin/topics', {
+      discipline_id: ownDisciplineId,
+      title,
+      lesson_date: '2026-09-05',
+    });
+    assert.equal(res.status, 201);
+    topicIds.push(res.json.id);
+  }
+
+  const student = studentClient();
+  const sent = await student.post('/api/responses', {
+    discipline_id: ownDisciplineId,
+    topic_id: topicIds[0],
+    form_type: 'lesson',
+    scores: lessonScores,
+    comments: { l_improve: 'Больше задач на графы' },
+  });
+  assert.equal(sent.status, 201);
+
+  const removed = await adminClient.del(`/api/admin/teachers/${teacherId}`);
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.json.removed, { disciplines: 1, topics: 2, responses: 1 });
+
+  const adminList = await adminClient.get('/api/admin/disciplines');
+  assert.ok(!adminList.json.disciplines.some((d) => d.id === ownDisciplineId), 'дисциплина удалена вместе с владельцем');
+  const catalog = await studentClient().get('/api/disciplines');
+  assert.ok(!catalog.json.disciplines.some((d) => d.id === ownDisciplineId), 'в списке для студентов её больше нет');
+
+  assert.equal(all('SELECT * FROM topics WHERE discipline_id = ?', ownDisciplineId).length, 0, 'тем не осталось');
+  assert.equal(all('SELECT * FROM responses WHERE discipline_id = ?', ownDisciplineId).length, 0, 'анкет не осталось');
+  assert.equal(all("SELECT * FROM answer_scores WHERE response_id = ?", sent.json.id).length, 0, 'оценок не осталось');
+  assert.equal(all("SELECT * FROM answer_comments WHERE response_id = ?", sent.json.id).length, 0, 'отзывов не осталось');
+  assert.equal(all('SELECT * FROM teacher_views WHERE user_id = ?', teacherId).length, 0, 'отметок о просмотре не осталось');
+  assert.equal(all('SELECT * FROM users WHERE id = ?', teacherId).length, 0, 'аккаунт удалён');
+
+  const relogin = await staffClient().post('/api/auth/login', { login: 'orlova', password: 'Orlova#2026pass' });
+  assert.equal(relogin.status, 401, 'вход удалённого преподавателя невозможен');
+});
+
+test('удалить себя и последнего администратора нельзя', async () => {
+  const me = await adminClient.get('/api/auth/me');
+  const self = await adminClient.del(`/api/admin/teachers/${me.json.user.id}`);
+  assert.equal(self.status, 400);
+  assert.match(self.json.error, /собственну/);
+});
+
+test('на студенческом порту healthz не рассказывает про сервер', async () => {
+  const res = await studentClient().get('/healthz');
+  assert.equal(res.status, 200);
+  assert.equal(res.json.ok, true);
+  assert.ok(!('driver' in res.json) && !('uptime' in res.json), 'студентам не нужны сведения об устройстве сервера');
+  const staff = await staffClient().get('/healthz');
+  assert.ok('driver' in staff.json, 'на служебном порту сведения о драйвере остаются');
+});
+
 /* ------------------------------ XSS и выгрузка -------------------------- */
 
 test('скрипт в открытом ответе сохраняется в безопасном виде', async () => {

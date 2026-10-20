@@ -1,9 +1,6 @@
 /**
- * Заполнение анкеты студентом.
- *
- * Приватность: в localStorage/sessionStorage ничего не пишем, cookie не используем,
- * никаких данных о студенте не отправляем. Единственная "метка" - время начала
- * заполнения, оно живёт в памяти вкладки и служит анти-бот проверкой.
+ * Заполнение анкеты студентом: дисциплина, тема занятия, вид анкеты, шкала
+ * и открытые ответы. Отправляется вся анкета сразу, одним запросом.
  */
 
 import { api, el, mount, clear, setParams, qsParam, toast } from './api.js';
@@ -198,9 +195,8 @@ function renderSurvey() {
     return el('section', { class: 'survey-section' }, [el('h2', { text: section.title }), ...nodes]);
   });
 
-  // Honeypot: скрытое поле, которое заполняют только боты
-  const honeypot = el('input', {
-    class: 'honeypot',
+  const extraField = el('input', {
+    class: 'contact-field',
     attrs: {
       type: 'text',
       name: 'contact_email',
@@ -220,7 +216,7 @@ function renderSurvey() {
   const form = el('form', { attrs: { novalidate: true }, on: { submit: onSubmit } }, [
     ...sections,
     submitButton,
-    honeypot,
+    extraField,
   ]);
 
   mount(surveyNode, form);

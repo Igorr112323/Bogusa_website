@@ -9,7 +9,7 @@ const express = require('express');
 const QRCode = require('qrcode');
 
 const config = require('../config');
-const { all, get, run, nowIso } = require('../db');
+const { all, get, run, tx, nowIso } = require('../db');
 const { ApiError } = require('../errors');
 const { parseId, parseBool, parseDate, parseFormType } = require('../validate');
 const { sanitizeText } = require('../sanitize');
@@ -241,8 +241,8 @@ router.patch('/teachers/:id', async (req, res, next) => {
 });
 
 /**
- * Удаление пользователя. Если за ним закреплены дисциплины, нужно либо передать их
- * другому преподавателю (?reassign_to=ID), либо явно согласиться их «отвязать» (force=1).
+ * Удаляет преподавателя вместе со всем его содержимым: дисциплинами, темами
+ * занятий и собранными по ним анкетами. Действие необратимо.
  */
 router.delete('/teachers/:id', (req, res, next) => {
   try {
@@ -257,40 +257,29 @@ router.delete('/teachers/:id', (req, res, next) => {
       if (admins <= 1) throw new ApiError(400, 'В системе должен остаться хотя бы один администратор');
     }
 
-    const disciplines = all('SELECT id, title FROM disciplines WHERE teacher_id = ?', id);
-
-    let reassignTo = null;
-    if (req.query.reassign_to) {
-      reassignTo = parseId(req.query.reassign_to, 'идентификатор преподавателя');
-      if (reassignTo === id) throw new ApiError(400, 'Нельзя передать дисциплины удаляемому пользователю');
-      const target = get('SELECT id, role FROM users WHERE id = ?', reassignTo);
-      if (!target) throw new ApiError(400, 'Преподаватель для передачи дисциплин не найден');
-    } else if (disciplines.length > 0 && !parseBool(req.query.force, false)) {
-      throw new ApiError(
-        409,
-        `За пользователем закреплено дисциплин: ${disciplines.length}. Передайте их другому преподавателю ` +
-          '(параметр reassign_to) или удалите с параметром force=1 — тогда дисциплины останутся без преподавателя.',
-        { disciplines: disciplines.map((d) => ({ id: d.id, title: d.title })) }
-      );
-    }
-
-    if (disciplines.length > 0) {
-      if (reassignTo) {
-        run('UPDATE disciplines SET teacher_id = ?, updated_at = ? WHERE teacher_id = ?', reassignTo, nowIso(), id);
-        run('UPDATE responses SET teacher_id = ? WHERE teacher_id = ?', reassignTo, id);
-      } else {
-        run('UPDATE disciplines SET teacher_id = NULL, updated_at = ? WHERE teacher_id = ?', nowIso(), id);
-        run('UPDATE responses SET teacher_id = NULL WHERE teacher_id = ?', id);
+    const removed = tx(() => {
+      const ids = all('SELECT id FROM disciplines WHERE teacher_id = ?', id).map((row) => row.id);
+      const stats = { disciplines: ids.length, topics: 0, responses: 0 };
+      if (ids.length > 0) {
+        const marks = ids.map(() => '?').join(', ');
+        stats.topics = get(`SELECT COUNT(*) AS n FROM topics WHERE discipline_id IN (${marks})`, ...ids).n;
+        stats.responses = get(`SELECT COUNT(*) AS n FROM responses WHERE discipline_id IN (${marks})`, ...ids).n;
+        // Порядок важен: сначала анкеты (по каскаду уходят оценки и отзывы),
+        // затем темы занятий, в самом конце - дисциплины.
+        run(`DELETE FROM responses WHERE discipline_id IN (${marks})`, ...ids);
+        run(`DELETE FROM topics WHERE discipline_id IN (${marks})`, ...ids);
+        run('DELETE FROM disciplines WHERE teacher_id = ?', id);
       }
-    }
+      run('DELETE FROM users WHERE id = ?', id);
+      return stats;
+    });
 
-    run('DELETE FROM users WHERE id = ?', id);
     logAudit(req, 'teacher.deleted', {
       entity: 'user',
       entityId: id,
-      details: { login: user.login, reassign_to: reassignTo, disciplines: disciplines.length },
+      details: { login: user.login, ...removed },
     });
-    res.json({ ok: true, reassigned: reassignTo, unassigned_disciplines: reassignTo ? 0 : disciplines.length });
+    res.json({ ok: true, removed });
   } catch (err) {
     next(err);
   }

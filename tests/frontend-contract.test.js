@@ -695,5 +695,42 @@ test('заголовки безопасности выставлены, iframe �
   const csp = res.headers.get('content-security-policy');
   assert.ok(csp.includes("frame-ancestors *"), `CSP должна разрешать встраивание: ${csp}`);
   assert.ok(csp.includes("script-src 'self'"), 'скрипты только со своего домена');
+  assert.ok(csp.includes("style-src 'self'"), 'стили только свои: инлайн-стили задаются через DOM, не разметкой');
   assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+
+  // Панели встраивать нельзя: иначе чужая кнопка поверх формы входа.
+  const staffRes = await fetch(`${staffUrl}/login`);
+  const staffCsp = staffRes.headers.get('content-security-policy');
+  assert.ok(staffCsp.includes("frame-ancestors 'none'"), `панели не должны встраиваться в кадр: ${staffCsp}`);
+  assert.equal(staffRes.headers.get('x-frame-options'), 'DENY', 'страховка для старых браузеров');
+  for (const url of ['/portal/', '/admin/']) {
+    const r = await fetch(staffUrl + url);
+    assert.ok(r.headers.get('content-security-policy').includes("frame-ancestors 'none'"), `${url}: политика кадра`);
+  }
+});
+
+test('во фронтенде нет описания устройства сервера и механизма защиты от ботов', () => {
+  const files = fs
+    .readdirSync(path.join(PUBLIC_DIR, 'js'))
+    .map((f) => `public/js/${f}`)
+    .concat(['public/index.html', 'public/form.html', 'public/login.html', 'public/404.html', 'public/css/styles.css']);
+  for (const file of files) {
+    const text = read(file);
+    for (const secret of ['honeypot', 'Honeypot', 'анти-бот', 'httpOnly', 'STAFF_PORT', 'MIN_ANSWERS', 'JWT_SECRET', 'bcrypt', 'SQLITE', 'better-sqlite3']) {
+      assert.ok(!text.includes(secret), `${file}: не должен упоминать ${secret}`);
+    }
+  }
+});
+
+test('удаление преподавателя в админке убирает всё его содержимое', () => {
+  const admin = read('public/js/admin.js');
+  const route = read('server/routes/admin.js');
+  assert.ok(!admin.includes('reassign_to'), 'в окне удаления преподавателя нет выбора, кому передать дисциплины');
+  assert.ok(!admin.includes('оставить дисциплины без преподавателя'), 'отвязывать дисциплины больше не предлагается');
+  assert.ok(admin.includes('темы занятий и все анкеты студентов'), 'окно предупреждает, что удаляется всё');
+  assert.ok(admin.includes('result.removed'), 'админ видит, сколько объектов удалено');
+  assert.ok(route.includes('const removed = tx('), 'удаление выполняется одной транзакцией');
+  for (const sql of ['DELETE FROM responses', 'DELETE FROM topics', 'DELETE FROM disciplines']) {
+    assert.ok(route.includes(sql), `каскад должен удалять: ${sql}`);
+  }
 });

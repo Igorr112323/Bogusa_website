@@ -16,11 +16,17 @@ const {
 const { FORM_TYPE_RU } = require('./constants');
 const { unescapeHtml } = require('./sanitize');
 
+// Ячейка, начинающаяся с =, +, - или @, редактором таблиц читается как формула.
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^-?\d+([.,]\d+)?$/;
+
 function csvCell(value, delimiter) {
   if (value === null || value === undefined) return '';
   let str = String(value);
   // В CSV — читаемый текст: снимаем HTML-экранирование, добавленное при хранении.
   str = unescapeHtml(str).replace(/\r?\n/g, ' ');
+  // Текст студента может начаться с формулы: такую ячейку делаем явным текстом.
+  if (FORMULA_START.test(str) && !PLAIN_NUMBER.test(str)) str = "'" + str;
   if (str.includes(delimiter) || str.includes('"') || str.includes('\n')) {
     str = `"${str.replace(/"/g, '""')}"`;
   }

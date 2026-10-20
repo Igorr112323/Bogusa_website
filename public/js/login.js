@@ -35,7 +35,7 @@ function redirectFor(user) {
 }
 
 async function afterLogin(user, token) {
-  // Токен нужен только панелям (cookie как основной механизм уже выставлен сервером)
+  // Ключ сессии нужен только панелям
   setToken(token, { persist: true });
   if (user.must_change_password) {
     loginTitle.textContent = 'Смена временного пароля';

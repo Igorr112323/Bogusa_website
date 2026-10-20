@@ -1,5 +1,5 @@
 /**
- * Админ-панель: преподаватели, дисциплины и темы, сквозные отчёты, QR-коды, журнал.
+ * Админ-панель: преподаватели, дисциплины и темы, сквозные отчёты.
  */
 
 import {
@@ -411,33 +411,26 @@ async function renderTeachers() {
               text: 'Удалить',
               attrs: { type: 'button' },
               on: {
-                click: async () => {
-                  const others = state.teachers.filter((t) => t.id !== teacher.id);
-                  const select = el('select', { class: 'select' }, [
-                    el('option', { text: 'оставить дисциплины без преподавателя', attrs: { value: '' } }),
-                    ...others.map((t) => el('option', { text: t.full_name, attrs: { value: String(t.id) } })),
-                  ]);
+                click: () => {
+                  const counts = `Дисциплин: ${teacher.disciplines ?? 0}, собранных анкет: ${teacher.responses ?? 0}.`;
                   modal({
-                    title: `Удалить "${teacher.full_name}"?`,
+                    title: `Удалить \"${teacher.full_name}\"?`,
                     content: el('div', {}, [
-                      el('p', { class: 'soft', text: 'Действие необратимо. Аккаунт и доступ будут удалены.' }),
-                      el('div', { class: 'field' }, [
-                        el('label', { class: 'label', text: 'Что делать с дисциплинами?' }),
-                        select,
-                        el('span', { class: 'hint', text: 'Лучше передать другому преподавателю, чтобы отзывы не остались без ответственного.' }),
-                      ]),
+                      el('p', { class: 'soft', text: 'Вместе с преподавателем удаляются его дисциплины, темы занятий и все анкеты студентов. Аккаунт и доступ тоже удаляются.' }),
+                      el('p', { class: 'small muted', text: counts }),
+                      el('p', { class: 'small muted', text: 'Действие необратимо: восстановить отзывы нельзя.' }),
                     ]),
                     actions: [
                       { label: 'Отмена', class: 'btn-ghost' },
                       {
-                        label: 'Удалить',
+                        label: 'Удалить всё',
                         class: 'btn-danger',
                         closeAfter: false,
                         onClick: async ({ close }) => {
                           try {
-                            const query = select.value ? `?reassign_to=${select.value}` : '?force=1';
-                            await api.del(`/api/admin/teachers/${teacher.id}${query}`);
-                            toast('Пользователь удалён', 'ok');
+                            const result = await api.del(`/api/admin/teachers/${teacher.id}`);
+                            const n = result.removed || {};
+                            toast(`Удалено: дисциплин ${n.disciplines ?? 0}, тем ${n.topics ?? 0}, анкет ${n.responses ?? 0}`, 'ok');
                             close();
                             refresh();
                           } catch (error) {

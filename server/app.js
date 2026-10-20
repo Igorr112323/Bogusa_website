@@ -17,7 +17,7 @@ const cookieParser = require('cookie-parser');
 const config = require('./config');
 const { driver } = require('./db');
 const { attachUser, requireAuth, requireRole, requirePasswordChanged } = require('./auth');
-const { helmetMiddleware, extraHeaders } = require('./middleware/security');
+const { securityMiddleware, extraHeaders } = require('./middleware/security');
 const { apiLimiter } = require('./middleware/rateLimit');
 const { ApiError } = require('./errors');
 const { errorHandler } = require('./validate');
@@ -80,16 +80,21 @@ function createApp(scope = 'student') {
   app.set('query parser', 'simple');
   app.locals.scope = scope;
 
-  app.use(helmetMiddleware);
-  app.use(extraHeaders);
+  app.use(securityMiddleware(scope));
+  app.use(extraHeaders(scope));
   app.use(express.json({ limit: '128kb' }));
   app.use(express.urlencoded({ extended: false, limit: '128kb' }));
   app.use(cookieParser());
 
   /* ------------------------- Служебные маршруты ------------------------- */
 
+  // Студентам достаточно знать, что сайт живёт: устройство сервера здесь не нужно.
   app.get('/healthz', (_req, res) => {
-    res.json({ ok: true, scope, driver, uptime: Math.round(process.uptime()) });
+    if (scope === 'staff') {
+      res.json({ ok: true, scope, driver, uptime: Math.round(process.uptime()) });
+      return;
+    }
+    res.json({ ok: true, scope });
   });
 
   /* --------------------------------- API ------------------------------- */

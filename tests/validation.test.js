@@ -181,6 +181,29 @@ test('CSV экранирует разделители и кавычки, сни�
   assert.equal(rowCells[likedColumn], 'Было "полезно"', 'открытый ответ стоит в своей колонке');
 });
 
+test('CSV не превращает ответ студента в формулу', () => {
+  const risky = toCsv([
+    {
+      id: 7,
+      form_type: 'lesson',
+      discipline: '=ДДСЧитатель',
+      topic: '+7 900 000-00-00',
+      created_date: '2026-09-10',
+      created_at: '2026-09-10T10:00:00.000Z',
+      overall_avg: -1.5,
+      scores: lessonScores,
+      comments: [{ key: 'l_improve', body: '@HYPERLINK(\"hxxp://example.ru\",\"клик\")' }],
+    },
+  ]);
+  const cells = splitCsvLine(risky.trim().split('\n')[1]);
+  assert.ok(cells[2].startsWith("'"), 'значение, начинающееся с =, экранируется апострофом');
+  assert.ok(cells[3].startsWith("'"), 'плюс в начале тоже нейтрализуется');
+  const commentColumn = cells.findIndex((c) => c.includes('HYPERLINK'));
+  assert.ok(commentColumn > 0 && cells[commentColumn].startsWith("'"), 'отзыв студента не станет формулой');
+  const avg = cells[1];
+  assert.ok(!avg.startsWith("'"), 'число (в том числе отрицательное) остаётся числом');
+});
+
 test('комментарии не «перетекают» между анкетами и снятыми вопросами', () => {
   // «Пожелания преподавателю» раньше были и в анкете по занятию (l_wishes), и в итоговой (f_wishes)
   const csv = toCsv([

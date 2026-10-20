@@ -928,8 +928,8 @@ a:hover {
   display: none !important;
 }
 
-/* Ловушка для ботов: реальный посетитель её не видит и не заполняет */
-.honeypot {
+/* Скрытое поле анкеты: его видят только автоматические сборщики форм */
+.contact-field {
   position: absolute !important;
   left: -9999px !important;
   width: 1px;
