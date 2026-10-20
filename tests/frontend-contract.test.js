@@ -527,6 +527,18 @@ test('мои темы: массовое добавление, код дисци�
   }
 });
 
+test('мои темы: в таблице занятий нет колонки Анкет, дата по центру', () => {
+  const portal = read('public/js/portal.js');
+  const dash = read('public/css/dashboard.css');
+  const table = portal.slice(portal.indexOf('function topicsTable'), portal.indexOf('function disciplineCard'));
+  assert.ok(!table.includes("'Анкет'"), 'колонка с числом анкет убрана из таблицы занятий');
+  assert.ok(!table.includes('topic.responses'), 'число анкет по занятию в таблице не показывается');
+  assert.ok(table.includes("class: 'col-center', text: 'Дата'"), 'заголовок колонки даты по центру');
+  assert.equal((table.match(/col-center/g) || []).length, 2, 'по центру и заголовок, и значения даты');
+  assert.ok(table.includes("el('th', { class: 'num', text: '' })"), 'колонка кнопок осталась справа');
+  assert.match(dash, /\.table th\.col-center \{\n  text-align: center;/, 'колонка даты выровнена по центру');
+});
+
 test('мои темы: карточка дисциплины сворачивается по клику на названии', () => {
   const portal = read('public/js/portal.js');
   const dash = read('public/css/dashboard.css');

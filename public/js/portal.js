@@ -795,8 +795,7 @@ function topicsTable(discipline) {
       el('thead', {}, [
         el('tr', {}, [
           el('th', { text: 'Тема занятия' }),
-          el('th', { class: 'num', text: 'Дата' }),
-          el('th', { class: 'num', text: 'Анкет' }),
+          el('th', { class: 'col-center', text: 'Дата' }),
           el('th', { class: 'num', text: '' }),
         ]),
       ]),
@@ -809,8 +808,7 @@ function topicsTable(discipline) {
               el('div', { text: topic.title }),
               topic.is_active ? null : el('div', { class: 'tiny muted', text: 'выключена' }),
             ]),
-            el('td', { class: 'num', text: topic.lesson_date ? fmtDate(topic.lesson_date) : '-' }),
-            el('td', { class: 'num', text: String(topic.responses ?? 0) }),
+            el('td', { class: 'col-center', text: topic.lesson_date ? fmtDate(topic.lesson_date) : '-' }),
             el('td', { class: 'num' }, [
               el('div', { class: 'row-actions' }, [
                 el('button', {
