@@ -208,6 +208,9 @@ test('vps-setup.sh проверяет, что приложение отвеча�
   assert.match(s, /grep -aE "not ok\|error: /, 'упавший npm test должен показывать первую ошибку, а не хвост');
   assert.match(s, /echo "  Приложение:       \$app_state"/);
   assert.match(s, /Ссылки \(в скобках код ответа/);
+  assert.match(s, /code_t_hidden="\$\(probe "\$PUBLISH_PANELS_PORT" "\/admin\/"\)"/, 'скрытие админки проверяется кодом ответа');
+  assert.match(s, /не скрыта со своего порта/);
+  assert.match(s, /curl -sL --max-redirs 3/, 'probe следует за редиректом корня панели');
   assert.match(s, /код ответа, проверенный на сервере/);
   assert.match(s, /ВНИМАНИЕ: ссылка отвечает/);
   assert.match(s, /Версия приложения:/, 'в итоге должен быть номер версии - по нему видно, что git pull сработал');
@@ -231,8 +234,12 @@ test('публикация панелей - по явному флагу, по �
   assert.ok(!/sys ufw delete (?!allow)/.test(s), 'delete только в форме delete allow');
   assert.match(s, /не прошла команда: \$\*/, 'sys() печатает саму команду, а не "$@"');
   assert.match(s, /listen \[::\]:\$\{panel_port\};/, 'nginx слушает оба порта публикации');
-  assert.match(s, /location \^~ \/admin\/ \{ return 404; \}/, 'на порту преподавателя админки быть не должно');
-  assert.match(s, /location \^~ \/portal\/ \{ return 404; \}/, 'на порту админки кабинета преподавателя быть не должно');
+  assert.match(s, /location \^~ \/admin \{ return 404; \}/, 'на порту преподавателя админки быть не должно');
+  assert.match(s, /location \^~ \/portal \{ return 404; \}/, 'на порту админки кабинета преподавателя быть не должно');
+  assert.match(s, /location = \/ \{ return 302 \/portal\/; \}/, 'корень порта преподавателя ведёт в кабинет');
+  assert.match(s, /location = \/ \{ return 302 \/admin\/; \}/, 'корень админского порта ведёт в админку');
+  assert.match(s, /error_page 404 \/404\.html;/, 'закрытая дверь должна показывать нашу страницу, а не голый nginx');
+  assert.match(s, /location = \/404\.html \{ root \$\{APP_DIR\}\/public; internal; \}/);
   assert.equal(s.split('proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};').length - 1, 2, 'публичных блоков на staff-порт ровно два');
   assert.match(s, /printf 'dry-run'; return 0; fi/, 'в dry-run итог не дергает сеть');
   assert.match(s, /2>\/dev\/null \|\| true\)"\n  printf '%s' "\$\{out:-000\}"/, 'отказ curl не должен обрывать итог');

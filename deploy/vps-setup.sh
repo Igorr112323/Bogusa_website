@@ -436,10 +436,17 @@ mkdir -p "$(dirname "$nginx_conf")" "$(p /etc/nginx/sites-enabled)"
       echo "    client_max_body_size 512k;"
       echo "    access_log /var/log/nginx/feedback-${panel_role}.access.log;"
       echo
+      # nginx-овский 404 без error_page выглядит как "сайт сломан" - отдаём свою страницу
+      echo "    error_page 404 /404.html;"
+      echo "    location = /404.html { root ${APP_DIR}/public; internal; }"
+      echo
+      # корень порта сразу ведёт в свою панель - адрес без пути не должен быть тупиком
       if [ "$panel_role" = "teacher" ]; then
-        echo "    location ^~ /admin/ { return 404; }   # админка - на порту ${ADMIN_PUBLISH_PORT}"
+        echo "    location = / { return 302 /portal/; }"
+        echo "    location ^~ /admin { return 404; }   # админка - на порту ${ADMIN_PUBLISH_PORT}"
       else
-        echo "    location ^~ /portal/ { return 404; }  # кабинет преподавателя - на порту ${PUBLISH_PANELS_PORT}"
+        echo "    location = / { return 302 /admin/; }"
+        echo "    location ^~ /portal { return 404; }  # кабинет преподавателя - на порту ${PUBLISH_PANELS_PORT}"
       fi
       echo
       echo "    location / {"
@@ -579,18 +586,22 @@ echo "  Let's Encrypt:    $certbot_state"
 probe() {   # probe порт путь -> HTTP-код
   local port="$1" path="$2" out=""
   if [ "$DRY_RUN" = "1" ]; then printf 'dry-run'; return 0; fi
-  out="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 -H "Host: $BASE_HOST" \
+  out="$(curl -sL --max-redirs 3 -o /dev/null -w '%{http_code}' --max-time 6 -H "Host: $BASE_HOST" \
     "http://127.0.0.1:${port}${path}" 2>/dev/null || true)"
   printf '%s' "${out:-000}"
 }
 code_student="$(probe "$PUBLIC_PORT_ENV" "/")"
 code_form="$(probe "$PUBLIC_PORT_ENV" "/form.html")"
 code_portal=""; code_tlogin=""; code_admin=""; code_alogin=""
+code_t_hidden=""; code_a_hidden=""
 if [ "$PUBLISH_PANELS" = "1" ]; then
   code_portal="$(probe "$PUBLISH_PANELS_PORT" "/portal/")"
   code_tlogin="$(probe "$PUBLISH_PANELS_PORT" "/login")"
   code_admin="$(probe "$ADMIN_PUBLISH_PORT" "/admin/")"
   code_alogin="$(probe "$ADMIN_PUBLISH_PORT" "/login")"
+  # чужие панели со своего порта должны отвечать 404 - иначе разделение портов фикция
+  code_t_hidden="$(probe "$PUBLISH_PANELS_PORT" "/admin/")"
+  code_a_hidden="$(probe "$ADMIN_PUBLISH_PORT" "/portal/")"
 fi
 echo "  Ссылки (в скобках код ответа, проверенный на сервере; 200 - работает):"
 echo "    студентам:           $SCHEME://$BASE_HOST/             [$code_student]"
@@ -600,6 +611,7 @@ if [ "$PUBLISH_PANELS" = "1" ]; then
   echo "    вход преподавателя:  http://$BASE_HOST:$PUBLISH_PANELS_PORT/login     [$code_tlogin]"
   echo "    администратору:      http://$BASE_HOST:$ADMIN_PUBLISH_PORT/admin/     [$code_admin]"
   echo "    вход администратора: http://$BASE_HOST:$ADMIN_PUBLISH_PORT/login      [$code_alogin]"
+  echo "    (корень :$PUBLISH_PANELS_PORT перекидывает в кабинет, :$ADMIN_PUBLISH_PORT - в админку)"
   echo "    это http: пароль в сети читается; когда появится домен - пустите скрипт с"
   echo "    DOMAIN=домен, и он выдаст сертификат и включит https сам"
 elif [ -n "$STAFF_DOMAIN" ]; then
@@ -617,6 +629,12 @@ if [ "$DRY_RUN" != "1" ]; then
       break
     fi
   done
+  if [ "$PUBLISH_PANELS" = "1" ]; then
+    if [ "$code_t_hidden" != "404" ] || [ "$code_a_hidden" != "404" ]; then
+      echo "    ВНИМАНИЕ: чужая панель не скрыта со своего порта (должно быть 404, а пришло $code_t_hidden/$code_a_hidden)"
+      echo "              пришлите эти строки и вывод: nginx -T | grep -A3 'listen ${PUBLISH_PANELS_PORT}'"
+    fi
+  fi
 fi
 echo "  Логин администратора: admin, пароль - в файле $APP_DIR/.deploy-admin-password"
 echo "                        (cat $APP_DIR/.deploy-admin-password)"
