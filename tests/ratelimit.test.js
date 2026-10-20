@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Проверка ограничений частоты: отдельный процесс и своя БД, лимиты снижены
- * через переменные окружения.
+ * Проверка ограничений: отдельный процесс и своя БД, значения снижены через
+ * переменные окружения. Здесь же - пауза после неверных паролей.
  */
 
 const test = require('node:test');
@@ -19,8 +19,8 @@ process.env.ADMIN_PASSWORD = 'Admin#2026pass';
 process.env.ANTI_BOT_MIN_FILL_MS = '0';
 process.env.RATE_LIMIT_SUBMIT = '3';
 process.env.RATE_LIMIT_SUBMIT_WINDOW_MIN = '60';
-process.env.RATE_LIMIT_LOGIN = '3';
-process.env.RATE_LIMIT_LOGIN_WINDOW_MIN = '15';
+process.env.LOGIN_MAX_ATTEMPTS = '2';
+process.env.LOGIN_COOLDOWN_SECONDS = '2';
 process.env.RATE_LIMIT_API = '100000';
 process.env.NODE_ENV = 'test';
 
@@ -39,6 +39,15 @@ for (const q of getScaleQuestions('lesson')) scores[q.key] = 5;
 
 test.before(async () => {
   const now = nowIso();
+  // в тестовой базе ещё нет ни одного аккаунта - заводим администратора
+  const { hashPassword } = require('../server/auth');
+  run(
+    `INSERT INTO users (login, password_hash, full_name, role, is_active, must_change_password, token_version, created_at, updated_at)
+     VALUES ('admin', ?, 'Администратор', 'admin', 1, 0, 1, ?, ?)`,
+    await hashPassword('Admin#2026pass'),
+    now,
+    now
+  );
   run(
     `INSERT INTO disciplines (title, code, teacher_id, is_active, created_at, updated_at)
      VALUES ('Тестовая дисциплина', 'T-1', NULL, 1, ?, ?)`,
@@ -93,16 +102,48 @@ test('после лимита отправок сервер отвечает 429
   assert.deepEqual(statuses.slice(3), [429, 429]);
 });
 
-test('перебор паролей также ограничен', async () => {
-  const statuses = [];
-  for (let i = 0; i < 5; i += 1) {
-    const res = await fetch(`${staffUrl}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ login: 'admin', password: `wrong-${i}` }),
-    });
-    statuses.push(res.status);
+/** Неверный пароль: фиксированная пауза, которая не растёт. */
+const attempt = async (password) => {
+  const res = await fetch(`${staffUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login: 'admin', password }),
+  });
+  // счётчик ошибок сервер обновляет, когда ответ отправлен: даём этому мгновение
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  return res;
+};
+
+test('после двух неверных паролей вход приостанавливается', async () => {
+  assert.equal((await attempt('wrong-1')).status, 401);
+
+  // Успешный вход обнуляет счётчик: накопленные ошибки не должны «переноситься».
+  const good = await attempt('Admin#2026pass');
+  assert.equal(good.status, 200);
+  assert.ok(good.headers.getSetCookie().length > 0, 'кука сессии выдана');
+
+  assert.equal((await attempt('wrong-2')).status, 401);
+  assert.equal((await attempt('wrong-3')).status, 401, 'счётчик дошёл до лимита');
+
+  const blocked = await attempt('Admin#2026pass');
+  assert.equal(blocked.status, 429, 'на время паузы вход закрыт даже с верным паролем');
+  const body = await blocked.json();
+  assert.equal(body.code, 'LOGIN_COOLDOWN');
+  assert.equal(body.retryAfterSeconds, 2, 'сервер называет длительность паузы');
+  assert.match(body.error, /через 2 секунд/);
+});
+
+test('пауза не увеличивается при повторных попытках и сама заканчивается', async () => {
+  const waits = [];
+  for (let i = 0; i < 4; i += 1) {
+    const res = await attempt('Admin#2026pass');
+    assert.equal(res.status, 429);
+    waits.push((await res.json()).retryAfterSeconds);
+    assert.equal(res.headers.get('retry-after'), '2', 'заголовок Retry-After совпадает с телом');
   }
-  assert.deepEqual(statuses.slice(0, 3), [401, 401, 401]);
-  assert.deepEqual(statuses.slice(3), [429, 429]);
+  assert.deepEqual(waits, [2, 2, 2, 2], 'длительность всегда одна и та же');
+
+  await new Promise((resolve) => setTimeout(resolve, 2300));
+  const after = await attempt('Admin#2026pass');
+  assert.equal(after.status, 200, 'пауза закончилась - вход снова работает');
 });

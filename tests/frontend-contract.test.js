@@ -722,6 +722,32 @@ test('во фронтенде нет описания устройства се�
   }
 });
 
+test('пауза после неверных пароля: фиксированная, одинаковая для всех', () => {
+  const config = read('server/config.js');
+  const auth = read('server/routes/auth.js');
+  const guard = read('server/middleware/loginGuard.js');
+  const env = read('.env.example');
+  const login = read('public/js/login.js');
+
+  assert.match(config, /LOGIN_MAX_ATTEMPTS: toInt\(process\.env\.LOGIN_MAX_ATTEMPTS, 5\)/, 'по умолчанию 5 неверных паролей');
+  assert.match(config, /LOGIN_COOLDOWN_SECONDS: toInt\(process\.env\.LOGIN_COOLDOWN_SECONDS, 10\)/, 'пауза 10 секунд');
+  assert.ok(!config.includes('RATE_LIMIT.login'), 'старого ограничения входа на 15 минут больше нет');
+  assert.ok(!guard.includes('Math.min') && !/\* 2/.test(guard), 'пауза не увеличивается');
+  assert.ok(/entry\.fails = 0/.test(guard), 'после паузы счётчик начинается заново');
+  assert.ok(auth.includes('loginGuard') && !auth.includes('loginLimiter'), 'роль не важна: правило одно для входа всех');
+  assert.ok(env.includes('LOGIN_MAX_ATTEMPTS=5') && env.includes('LOGIN_COOLDOWN_SECONDS=10'), 'настройки описаны в .env.example');
+  assert.ok(login.includes('startCooldown') && login.includes('retryAfterSeconds'), 'экран показывает обратный отсчёт');
+  assert.ok(login.includes('button.disabled = true'), 'кнопка на время паузы неактивна');
+});
+
+test('админка подсказывает по каждому полю при создании преподавателя', () => {
+  const admin = read('public/js/admin.js');
+  assert.ok(!admin.includes("Заполните логин и ФИО"), 'общее сообщение вместо конкретного больше не используется');
+  assert.ok(admin.includes('Заполните логин') && admin.includes('Заполните ФИО'), 'у каждого поля своя подсказка');
+  assert.ok(admin.includes('loginInput.focus()') && admin.includes('nameInput.focus()'), 'курсор ставится в нужное поле');
+  assert.ok(admin.includes('LOGIN_RE'), 'формат логина проверяется до отправки');
+});
+
 test('удаление преподавателя в админке убирает всё его содержимое', () => {
   const admin = read('public/js/admin.js');
   const route = read('server/routes/admin.js');

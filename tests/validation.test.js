@@ -181,6 +181,26 @@ test('CSV экранирует разделители и кавычки, сни�
   assert.equal(rowCells[likedColumn], 'Было "полезно"', 'открытый ответ стоит в своей колонке');
 });
 
+test('подставной Host не попадает в ссылки и QR-коды', () => {
+  const config = require('../server/config');
+  assert.equal(config.isTrustedHost('localhost'), true);
+  assert.equal(config.isTrustedHost('127.0.0.1'), true);
+  assert.equal(config.isTrustedHost('192.168.10.40'), true);
+  assert.equal(config.isTrustedHost('10.12.0.7'), true);
+  assert.equal(config.isTrustedHost('campus.local'), true);
+  assert.equal(config.isTrustedHost('evil.example'), false);
+  assert.equal(config.isTrustedHost('attacker' + '.a'.repeat(300)), false);
+
+  // если публичный адрес задан, он и используется
+  const saved = config.PUBLIC_BASE_URL;
+  config.PUBLIC_BASE_URL = 'https://feedback.univer.ru';
+  assert.equal(config.studentBaseUrl({ hostname: 'evil.example' }), 'https://feedback.univer.ru');
+  config.PUBLIC_BASE_URL = '';
+  assert.equal(config.studentBaseUrl({ hostname: 'evil.example' }), `http://localhost:${config.PORT}`);
+  assert.equal(config.studentBaseUrl({ hostname: '192.168.10.40' }), `http://192.168.10.40:${config.PORT}`);
+  config.PUBLIC_BASE_URL = saved;
+});
+
 test('CSV не превращает ответ студента в формулу', () => {
   const risky = toCsv([
     {

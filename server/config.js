@@ -110,10 +110,17 @@ const config = {
 
   RATE_LIMIT: {
     /** Лимиты: [количество запросов, окно в минутах] */
-    login: [toInt(process.env.RATE_LIMIT_LOGIN, 10), toInt(process.env.RATE_LIMIT_LOGIN_WINDOW_MIN, 15)],
     submit: [toInt(process.env.RATE_LIMIT_SUBMIT, 15), toInt(process.env.RATE_LIMIT_SUBMIT_WINDOW_MIN, 60)],
     api: [toInt(process.env.RATE_LIMIT_API, 600), toInt(process.env.RATE_LIMIT_API_WINDOW_MIN, 15)],
   },
+
+  /**
+   * Неверные пароли: после скольких попыток подряд включается пауза.
+   * LOGIN_COOLDOWN_SECONDS - её длительность; она всегда одна и та же и не
+   * растёт при повторных ошибках. 0 в любом из значений - отключить паузу.
+   */
+  LOGIN_MAX_ATTEMPTS: toInt(process.env.LOGIN_MAX_ATTEMPTS, 5),
+  LOGIN_COOLDOWN_SECONDS: toInt(process.env.LOGIN_COOLDOWN_SECONDS, 10),
 
   /** Аккаунт администратора, создаваемый при первом запуске / в сидере. */
   ADMIN_LOGIN: (process.env.ADMIN_LOGIN || 'admin').trim(),
@@ -128,11 +135,38 @@ if (config.STAFF_PORT === config.PORT) {
   );
 }
 
+/** Хосты, которым можно доверять при построении ссылок, сверх локальных и частных. */
+const EXTRA_ALLOWED_HOSTS = String(process.env.ALLOWED_HOSTS || '')
+  .split(',')
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
+
+const LOOPBACK_HOST_RE = /^(localhost|127(\.\d{1,3}){3}|::1|0\.0\.0\.0)$/;
+const PRIVATE_HOST_RE =
+  /^(10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2}|169\.254(\.\d{1,3}){3})$/;
+
+/**
+ * Имя хоста из запроса используется для ссылок и QR-кодов только если это локальный
+ * или частный адрес либо он явно разрешён в ALLOWED_HOSTS. Иначе подставной
+ * заголовок Host превратился бы в чужую ссылку, которую преподаватель показал бы
+ * студентам. При заданном PUBLIC_URL заголовок Host не используется вовсе.
+ */
+function isTrustedHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[(.*)\]$/, '$1').replace(/\.$/, '');
+  if (!host || host.length > 253) return false;
+  if (EXTRA_ALLOWED_HOSTS.includes(host)) return true;
+  if (LOOPBACK_HOST_RE.test(host) || PRIVATE_HOST_RE.test(host)) return true;
+  if (host.endsWith('.local') || host.endsWith('.lan')) return true;
+  return false;
+}
+
+config.isTrustedHost = isTrustedHost;
+
 /**
  * Адрес студенческого сайта. Ссылки и QR-коды для студентов всегда строятся от
  * студенческого порта, даже если их показывает панель на STAFF_PORT.
  *
- * @param {object} [req] запрос Express — из него берётся имя хоста
+ * @param {object} [req] запрос Express — из него берётся имя хоста (если оно надёжное)
  * @returns {string} например, http://localhost:3000
  */
 function studentBaseUrl(req) {
@@ -140,7 +174,7 @@ function studentBaseUrl(req) {
   let host = 'localhost';
   if (req) {
     const fromRequest = req.hostname || (req.headers && req.headers.host ? String(req.headers.host).split(':')[0] : '');
-    if (fromRequest) host = fromRequest;
+    if (fromRequest && isTrustedHost(fromRequest)) host = fromRequest;
   }
   return `http://${host}:${config.PORT}`;
 }

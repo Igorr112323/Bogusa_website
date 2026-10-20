@@ -253,31 +253,47 @@ function teacherFormModal({ teacher = null, onSaved }) {
 
   const content = el('div', {}, [
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Логин' }), loginInput, el('span', { class: 'hint', text: 'Латинские буквы, цифры, точка, дефис, подчёркивание. 3-32 символа.' })]),
-    el('div', { class: 'field' }, [el('label', { class: 'label', text: 'ФИО' }), nameInput]),
+    el('div', { class: 'field' }, [el('label', { class: 'label', text: 'ФИО' }), nameInput, el('span', { class: 'hint', text: 'Как в табеле: фамилия, имя, отчество. Регистр и сокращения - на ваше усмотрение.' })]),
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Роль' }), roleSelect]),
     !teacher ? el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Пароль' }), passwordInput]) : null,
     statusNode,
   ]);
 
   let instance;
+  const LOGIN_RE = /^[a-z0-9._-]{3,32}$/;
+
   const save = async () => {
-    if (!loginInput.value.trim() || !nameInput.value.trim()) {
-      mount(statusNode, el('div', { class: 'alert alert-warn', text: 'Заполните логин и ФИО' }));
+    const login = loginInput.value.trim().toLowerCase();
+    const fullName = nameInput.value.trim();
+    // сообщения отдельны для каждого поля: подсказка не должна указывать не туда
+    if (!login) {
+      mount(statusNode, el('div', { class: 'alert alert-warn', text: 'Заполните логин - он выше, латинскими буквами' }));
+      loginInput.focus();
+      return;
+    }
+    if (!LOGIN_RE.test(login)) {
+      mount(statusNode, el('div', { class: 'alert alert-warn', text: 'Логин: 3-32 символа, латинские буквы, цифры и точки, дефис, подчёркивание' }));
+      loginInput.focus();
+      return;
+    }
+    if (!fullName) {
+      mount(statusNode, el('div', { class: 'alert alert-warn', text: 'Заполните ФИО - можно как в паспорте, можно одним именем' }));
+      nameInput.focus();
       return;
     }
     try {
       if (teacher) {
         await api.patch(`/api/admin/teachers/${teacher.id}`, {
-          login: loginInput.value.trim(),
-          full_name: nameInput.value.trim(),
+          login,
+          full_name: fullName,
           role: roleSelect.value,
         });
         toast('Данные обновлены', 'ok');
         instance.close();
       } else {
         const payload = {
-          login: loginInput.value.trim(),
-          full_name: nameInput.value.trim(),
+          login,
+          full_name: fullName,
           role: roleSelect.value,
         };
         if (passwordInput.value.trim()) payload.password = passwordInput.value.trim();

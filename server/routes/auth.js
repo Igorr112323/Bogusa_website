@@ -18,7 +18,7 @@ const {
   clearAuthCookie,
   requireAuth,
 } = require('../auth');
-const { loginLimiter } = require('../middleware/rateLimit');
+const { loginGuard } = require('../middleware/loginGuard');
 const { logAudit } = require('../audit');
 
 const router = express.Router();
@@ -38,7 +38,7 @@ function tokenExpiry(token) {
   return decoded && decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null;
 }
 
-router.post('/login', loginLimiter, async (req, res, next) => {
+router.post('/login', loginGuard, async (req, res, next) => {
   try {
     const login = sanitizeLine(req.body?.login || '', { maxLength: 64 }).toLowerCase();
     const password = String(req.body?.password || '');

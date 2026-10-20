@@ -1,7 +1,9 @@
 'use strict';
 
 /**
- * Ограничение частоты запросов (rate-limit).
+ * Ограничение частоты запросов (rate-limit) для отправки анкет и API.
+ * Для входа в систему отдельное правило - фиксированная пауза после
+ * нескольких неверных паролей (см. middleware/loginGuard.js).
  * IP используется только в оперативной памяти счётчиков и нигде не сохраняется.
  */
 
@@ -45,14 +47,6 @@ function buildLimiter({ name, limit, windowMs, message }) {
   });
 }
 
-/** Вход в систему: защита от перебора паролей. */
-const loginLimiter = buildLimiter({
-  name: 'login',
-  limit: config.RATE_LIMIT.login[0],
-  windowMs: minutes(config.RATE_LIMIT.login[1]),
-  message: 'Слишком много попыток входа. Повторите позже.',
-});
-
 /** Отправка анкеты: защита от накрутки и спама (границы указаны в README). */
 const submitLimiter = buildLimiter({
   name: 'submit',
@@ -77,4 +71,4 @@ const catalogLimiter = buildLimiter({
   message: 'Слишком много запросов каталога. Подождите немного.',
 });
 
-module.exports = { loginLimiter, submitLimiter, apiLimiter, catalogLimiter };
+module.exports = { submitLimiter, apiLimiter, catalogLimiter };

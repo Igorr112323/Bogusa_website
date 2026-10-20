@@ -1,4 +1,8 @@
-/** Вход в систему, смена временного пароля, безопасный редирект по роли. */
+/** Вход в систему, смена временного пароля, безопасный редирект по роли.
+ *
+ * После нескольких неверных попыток вход приостанавливается на фиксированное время.
+ * Экран показывает обратный отсчёт, чтобы не дёргать форму вслепую.
+ */
 
 import { api, el, mount, clear, toast, setLoading, qsParam, setToken, clearToken } from './api.js';
 
@@ -20,6 +24,44 @@ function safeNext(fallback) {
   const next = qsParam('next');
   if (next && next.startsWith('/') && !next.startsWith('//')) return next;
   return fallback;
+}
+
+const loginButton = () => document.querySelector('#login-submit');
+let cooldownTimer = null;
+
+function stopCooldown() {
+  if (cooldownTimer) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = null;
+  }
+  const button = loginButton();
+  if (!button) return;
+  button.disabled = false;
+  if (button.dataset.originalText) button.textContent = button.dataset.originalText;
+}
+
+/** Обратный отсчёт: секунды берутся у сервера, поэтому они всегда одинаковые. */
+function startCooldown(seconds) {
+  stopCooldown();
+  let left = Math.max(1, Math.ceil(seconds));
+  const button = loginButton();
+  if (!button) return;
+  if (!button.dataset.originalText) button.dataset.originalText = button.textContent;
+  button.disabled = true;
+  const render = () => {
+    button.textContent = `Подождите ${left} с`;
+    setAlert(`Слишком много неверных попыток. Войти можно будет через ${left} с.`, 'warn');
+  };
+  render();
+  cooldownTimer = setInterval(() => {
+    left -= 1;
+    if (left <= 0) {
+      stopCooldown();
+      clear(alertsNode);
+      return;
+    }
+    render();
+  }, 1000);
 }
 
 function redirectFor(user) {
@@ -61,15 +103,21 @@ loginForm.addEventListener('submit', async (event) => {
   }
 
   setLoading(button, true, 'Проверяем…');
+  let pausedFor = 0;
   try {
     const data = await api.post('/api/auth/login', { login, password });
     await afterLogin(data.user, data.token);
   } catch (error) {
     if (error.status === 401) clearToken();
-    setAlert(error.message, 'danger');
-    if (error.status === 429) toast('Слишком много попыток входа. Подождите.', 'danger');
+    if (error.status === 429 && error.payload && error.payload.code === 'LOGIN_COOLDOWN') {
+      pausedFor = Number(error.payload.retryAfterSeconds) || 10;
+      document.querySelector('#password').value = '';
+    } else {
+      setAlert(error.message, 'danger');
+    }
   } finally {
     setLoading(button, false);
+    if (pausedFor) startCooldown(pausedFor);
   }
 });
 

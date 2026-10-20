@@ -1,6 +1,6 @@
 {
   "name": "bogusa-feedback",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "private": true,
   "description": "Анонимная обратная связь от студентов к преподавателю: анкеты по занятию и итоговая по дисциплине",
   "type": "commonjs",
@@ -17,7 +17,8 @@
     "qr": "node scripts/qr.js",
     "doctor": "node scripts/doctor.js",
     "help": "node scripts/help.js",
-    "dbcheck": "node scripts/dbcheck.js"
+    "dbcheck": "node scripts/dbcheck.js",
+    "secaudit": "node scripts/security-audit.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
