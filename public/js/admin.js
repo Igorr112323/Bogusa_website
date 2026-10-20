@@ -216,9 +216,6 @@ async function renderOverview() {
           )
         ),
       ]),
-      el('div', { class: 'card card-tight' }, [
-        el('p', { class: 'small muted', text: data.min_answers_label || '' }),
-      ]),
     ]);
   } catch (error) {
     setAlert(error.message, 'danger');
@@ -673,14 +670,6 @@ async function renderDisciplines() {
 
 async function topicsModal({ discipline, onSaved }) {
   const listNode = el('div', {}, [el('div', { class: 'skeleton' })]);
-  const bulkArea = el('textarea', {
-    class: 'textarea',
-    attrs: {
-      placeholder: 'По одной теме в строке. Можно указать дату через "|": Введение | 2026-09-05',
-      rows: '4',
-    },
-  });
-
   const newTitle = el('input', { class: 'input', attrs: { placeholder: 'Название темы' } });
   const newDate = el('input', { class: 'input', attrs: { type: 'date' } });
   const statusNode = el('div');
@@ -833,40 +822,6 @@ async function topicsModal({ discipline, onSaved }) {
     ]),
     el('hr', { style: { border: 'none', 'border-top': '1px solid var(--border)', margin: '16px 0' } }),
     listNode,
-    el('details', {}, [
-      el('summary', { class: 'small soft', style: { cursor: 'pointer' }, text: 'Добавить несколько тем сразу' }),
-      el('div', { class: 'field', style: { 'margin-top': '10px' } }, [
-        bulkArea,
-        el('span', { class: 'hint', text: 'Формат: "Название | 2026-09-05" или просто "Название".' }),
-      ]),
-      el('button', {
-        class: 'btn btn-sm btn-ghost',
-        text: 'Загрузить список',
-        attrs: { type: 'button' },
-        on: {
-          click: async () => {
-            const lines = bulkArea.value
-              .split('\n')
-              .map((line) => line.trim())
-              .filter(Boolean);
-            if (lines.length === 0) return toast('Введите хотя бы одну тему', 'danger');
-            const topics = lines.map((line) => {
-              const [title, date] = line.split('|').map((part) => part.trim());
-              return { title, lesson_date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null };
-            });
-            try {
-              const result = await api.post(`/api/admin/disciplines/${discipline.id}/topics/bulk`, { topics });
-              toast(`Добавлено тем: ${result.created}`, 'ok');
-              bulkArea.value = '';
-              await load();
-              onSaved?.();
-            } catch (error) {
-              toast(error.message, 'danger');
-            }
-          },
-        },
-      }),
-    ]),
     statusNode,
   ]);
 
@@ -1070,10 +1025,7 @@ async function renderReports() {
     );
 
     mount(root, [
-      pageHead('Сквозные отчёты', 'Агрегация анонимных ответов по всем преподавателям и дисциплинам', [
-        el('a', { class: 'btn btn-sm btn-primary', text: 'Скачать CSV', attrs: { href: `/api/admin/export.csv?${params}` } }),
-        el('button', { class: 'btn btn-sm btn-ghost', text: 'Печать', attrs: { type: 'button' }, on: { click: () => window.print() } }),
-      ]),
+      pageHead('Сквозные отчёты', 'Агрегация анонимных ответов по всем преподавателям и дисциплинам'),
       el('div', { class: 'filter-bar' }, [
         el('div', { class: 'field' }, [el('label', { text: 'Преподаватель' }), teacherSelect]),
         el('div', { class: 'field' }, [el('label', { text: 'Дисциплина' }), disciplineSelect]),

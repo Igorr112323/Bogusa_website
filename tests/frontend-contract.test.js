@@ -543,6 +543,13 @@ test('админ-панель: без журнала, вкладки QR, гра�
   assert.ok(!admin.includes('Ко всем разделам'), 'прежняя кнопка перехода к списку разделов убрана');
   assert.ok(admin.includes('qrModal'), 'ссылка и QR для группы остались в разделе дисциплин');
   assert.match(dash, /\.filter-bar \.field\.date-pair \{/, 'поля дат в отчётах стоят в одну строку');
+  assert.ok(!admin.includes('Добавить несколько тем сразу') && !admin.includes("el('details'"), 'массовая загрузка списка тем из окна тем убрана');
+  assert.ok(!admin.includes('/topics/bulk'), 'админка не дерёт bulk-маршрут тем');
+  for (const gone of ['Скачать CSV', 'text: \'Печать\'', 'window.print', 'min_answers_label']) {
+    assert.ok(!admin.includes(gone), `из админки убрано: ${gone}`);
+  }
+  assert.ok(!html.includes('Портал преподавателя'), 'ссылка на портал преподавателя из шапки админки убрана');
+  assert.ok(html.includes('logout-button'), 'кнопка выхода в шапке осталась');
 });
 
 test('нет цикла редиректов между /admin/ и /login для преподавателя', () => {
