@@ -288,7 +288,14 @@ if [ "$DRY_RUN" != "1" ]; then
     useradd --system --shell /usr/sbin/nologin --home-dir "$APP_DIR" --comment "feedback app" "$DATA_OWNER" 2>/dev/null || true
   fi
   if id -u "$DATA_OWNER" >/dev/null 2>&1; then
-    chown -R "$DATA_OWNER:$DATA_OWNER" "$APP_DIR" 2>/dev/null || true
+    # Репозиторий остаётся собственностью root: служба не сможет переписать собственный
+    # код, и `git pull` под root не падает с "detected dubious ownership". На запись
+    # пользователю службы отдаём только каталог данных и файлы настроек.
+    chown -R root:root "$APP_DIR" 2>/dev/null || true
+    chown -R "$owner_final:$owner_final" "$APP_DIR/data" 2>/dev/null || true
+    chown root:"$owner_final" "$APP_DIR/.env" "$APP_DIR/.deploy-admin-password" 2>/dev/null || true
+    chmod 640 "$APP_DIR/.env" "$APP_DIR/.deploy-admin-password" 2>/dev/null || true
+    git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
   else
     owner_final=root
     note "не удалось создать пользователя $DATA_OWNER - служба пойдёт от root"
@@ -410,8 +417,9 @@ fi
 log "9/9 ежедневный бэкап базы"
 mkdir -p "$(p /usr/local/bin)" "$(p /etc/cron.d)" "$(p /var/backups/feedback)"
 install -m 755 "$APP_DIR/deploy/backup.sh" "$(p /usr/local/bin/feedback-backup)"
+# seed и setadminpass запускаются под root - после них файлы базы возвращаем пользователю службы
 if [ "$owner_final" != "root" ]; then
-  chown "$owner_final:$owner_final" "$APP_DIR/data" 2>/dev/null || true
+  chown -R "$owner_final:$owner_final" "$APP_DIR/data" 2>/dev/null || true
 fi
 cat > "$(p /etc/cron.d/feedback-backup)" <<EOF
 # создан deploy/vps-setup.sh: копия базы в 03:00, хранятся 14 дней

@@ -106,6 +106,16 @@ test('vps-setup.sh: production-настройки ссылок и Host', () => {
   assert.match(s, /set_env COOKIE_SECURE "\$\(\[ "\$SCHEME" = https \] && echo true \|\| echo false\)"/);
 });
 
+test('vps-setup.sh: репозиторий остаётся у root, службе - только data (git pull и защита кода)', () => {
+  const s = read(SETUP);
+  const block = s.slice(s.indexOf('owner_final="$DATA_OWNER"'), s.indexOf('unit_file='));
+  assert.match(block, /chown -R root:root "\$APP_DIR"/, 'иначе git pull падает с detected dubious ownership');
+  assert.ok(!/chown -R "\$DATA_OWNER:\$DATA_OWNER" "\$APP_DIR"\b/.test(block), 'весь репозиторий пользователю службы не отдаётся');
+  assert.match(block, /chown -R "\$owner_final:\$owner_final" "\$APP_DIR\/data"/);
+  assert.match(block, /git config --global --add safe\.directory/);
+  assert.match(s, /chown -R "\$owner_final:\$owner_final" "\$APP_DIR\/data" 2>\/dev\/null \|\| true\nfi/, 'после seed файлы базы возвращаются пользователю службы');
+});
+
 test('feedback.service: перезапуск и изоляция (обычный node, без pm2)', () => {
   const u = read(UNIT);
   assert.match(u, /ExecStart=\/usr\/bin\/env node server\/index\.js/);

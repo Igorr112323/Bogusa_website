@@ -152,6 +152,13 @@ db_file="$(env_get DB_FILE)"
 if [ -f "$db_file" ]; then
   size="$(du -h "$db_file" 2>/dev/null | cut -f1)"
   good "база на месте: $db_file ($size)"
+  unit_owner="$(awk -F= '/^User=/{print $2; exit}' /etc/systemd/system/feedback.service 2>/dev/null)"
+  db_owner="$(stat -c '%U' "$db_file" 2>/dev/null)"
+  if [ -n "$unit_owner" ] && [ -n "$db_owner" ] && [ "$unit_owner" != "$db_owner" ] && [ "$unit_owner" != "root" ]; then
+    bad "базой владеет $db_owner, а служба работает от $unit_owner - починка: chown -R $unit_owner '$(env_get DATA_DIR || echo "$APP_DIR/data")' && systemctl restart feedback"
+  elif [ -n "$unit_owner" ] && [ -n "$db_owner" ]; then
+    good "владелец базы ($db_owner) совпадает с пользователем службы ($unit_owner)"
+  fi
   users="$(sqlite3 "$db_file" 'select count(*) from users;' 2>/dev/null || echo '')"
   resp="$(sqlite3 "$db_file" 'select count(*) from responses;' 2>/dev/null || echo '')"
   [ -n "$users" ] && good "учётных записей: $users" || warn "базу не прочитать через sqlite3 - проверьте: sqlite3 $db_file 'PRAGMA integrity_check;'"
