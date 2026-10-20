@@ -105,17 +105,6 @@ function pageHead(title, subtitle, actions = []) {
   ]);
 }
 
-const exportUrl = (base, filters) => {
-  const params = new URLSearchParams();
-  if (filters.disciplineId) params.set('discipline_id', filters.disciplineId);
-  if (filters.topicId) params.set('topic_id', filters.topicId);
-  if (filters.formType) params.set('form_type', filters.formType);
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
-  const query = params.toString();
-  return `${base}${query ? `?${query}` : ''}`;
-};
-
 function statCard(label, value, sub) {
   return el('div', { class: 'stat' }, [
     el('div', { class: 'stat-label', text: label }),
@@ -486,19 +475,7 @@ async function renderReport() {
     const subtitle = [topicTitle ? discipline.title : null, periodNote()].filter(Boolean).join(' · ');
 
     mount(root, [
-      pageHead(heading, subtitle, [
-        el('button', {
-          class: 'btn btn-sm btn-ghost',
-          text: 'Печать / PDF',
-          attrs: { type: 'button' },
-          on: { click: () => window.print() },
-        }),
-        el('a', {
-          class: 'btn btn-sm btn-primary',
-          text: 'Скачать CSV',
-          attrs: { href: exportUrl('/api/teacher/export.csv', state.filters) },
-        }),
-      ]),
+      pageHead(heading, subtitle),
       pickerCard(discipline, onChange),
       report.total_responses === 0
         ? el('div', { class: 'alert alert-warn', text: 'По выбранным фильтрам пока нет ни одной анкеты.' })

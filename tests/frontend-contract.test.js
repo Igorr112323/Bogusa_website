@@ -577,6 +577,14 @@ test('мои темы: карточка дисциплины сворачива�
   assert.ok(!dash.includes('.catalog-form-col') && !dash.includes('.catalog-bulk-row'), 'стили двухколоночного блока добавления убраны');
 });
 
+test('в отчёте кабинета нет печати и выгрузки CSV', () => {
+  const portal = read('public/js/portal.js');
+  for (const gone of ['Печать / PDF', 'Скачать CSV', 'window.print', 'export.csv']) {
+    assert.ok(!portal.includes(gone), `из шапки отчёта убрано: ${gone}`);
+  }
+  assert.ok(!portal.includes('exportUrl'), 'ссылка на выгрузку больше не строится');
+});
+
 test('убранные блоки не возвращаются', () => {
   const login = read('public/login.html');
   assert.ok(!login.includes('site-header'), 'на странице входа нет шапки');
