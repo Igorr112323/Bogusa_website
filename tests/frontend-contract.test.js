@@ -767,3 +767,17 @@ test('удаление преподавателя в админке убирае
     assert.ok(route.includes(sql), `каскад должен удалять: ${sql}`);
   }
 });
+
+test('в полях ввода нет подсказок-заглушек: пустое поле остаётся пустым', () => {
+  const jsDir = path.join(ROOT, 'public', 'js');
+  for (const name of fs.readdirSync(jsDir)) {
+    if (!name.endsWith('.js')) continue;
+    const src = fs.readFileSync(path.join(jsDir, name), 'utf8');
+    assert.ok(!/placeholder\s*:/.test(src), `placeholder в public/js/${name}`);
+  }
+  for (const name of fs.readdirSync(path.join(ROOT, 'public'))) {
+    if (!name.endsWith('.html')) continue;
+    const src = fs.readFileSync(path.join(ROOT, 'public', name), 'utf8');
+    assert.ok(!/\bplaceholder\s*=/.test(src), `placeholder в public/${name}`);
+  }
+});

@@ -312,7 +312,7 @@ function commentsCard(report) {
 
   const search = el('input', {
     class: 'input',
-    attrs: { type: 'search', placeholder: 'Поиск по тексту отзыва', 'aria-label': 'Поиск по тексту отзыва' },
+    attrs: { type: 'search', 'aria-label': 'Поиск по тексту отзыва' },
     on: {
       input: (event) => {
         commentsFilter.q = event.target.value.trim();
@@ -554,7 +554,7 @@ function fieldRow(label, node, forId = null) {
 function createDisciplineCard() {
   const title = el('input', {
     class: 'input',
-    attrs: { type: 'text', id: 'new-discipline-title', placeholder: 'Например: Базы данных', maxlength: String(MAX_TITLE) },
+    attrs: { type: 'text', id: 'new-discipline-title', maxlength: String(MAX_TITLE) },
   });
   const submit = el('button', {
     class: 'btn btn-primary',
@@ -695,7 +695,6 @@ function topicAddForm(discipline) {
     attrs: {
       type: 'text',
       id: `topic-title-${discipline.id}`,
-      placeholder: 'Например: Запросы на языке SQL',
       maxlength: String(MAX_TITLE),
     },
   });

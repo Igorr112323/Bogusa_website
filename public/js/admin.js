@@ -232,11 +232,11 @@ async function renderOverview() {
 function teacherFormModal({ teacher = null, onSaved }) {
   const loginInput = el('input', {
     class: 'input',
-    attrs: { value: teacher ? teacher.login : '', placeholder: 'например, ivanova', autocapitalize: 'none', spellcheck: 'false' },
+    attrs: { value: teacher ? teacher.login : '', autocapitalize: 'none', spellcheck: 'false' },
   });
   const nameInput = el('input', {
     class: 'input',
-    attrs: { value: teacher ? teacher.full_name : '', placeholder: 'Иванова Мария Петровна' },
+    attrs: { value: teacher ? teacher.full_name : '' },
   });
   const roleSelect = el('select', { class: 'select' }, [
     el('option', { text: 'Преподаватель', attrs: { value: 'teacher' } }),
@@ -246,7 +246,7 @@ function teacherFormModal({ teacher = null, onSaved }) {
 
   const passwordInput = el('input', {
     class: 'input',
-    attrs: { type: 'text', placeholder: 'оставьте пустым - сгенерируем надёжный пароль' },
+    attrs: { type: 'text' },
   });
 
   const statusNode = el('div');
@@ -494,7 +494,7 @@ async function renderTeachers() {
 /* ------------------------------ Дисциплины ------------------------------ */
 
 function disciplineFormModal({ discipline = null, onSaved }) {
-  const titleInput = el('input', { class: 'input', attrs: { value: discipline ? discipline.title : '', placeholder: 'Дискретная математика' } });
+  const titleInput = el('input', { class: 'input', attrs: { value: discipline ? discipline.title : '' } });
 
   const teacherSelect = el('select', { class: 'select' }, [
     el('option', { text: 'не назначен', attrs: { value: '' } }),
@@ -679,7 +679,7 @@ async function renderDisciplines() {
 
 async function topicsModal({ discipline, onSaved }) {
   const listNode = el('div', {}, [el('div', { class: 'skeleton' })]);
-  const newTitle = el('input', { class: 'input', attrs: { placeholder: 'Название темы' } });
+  const newTitle = el('input', { class: 'input', attrs: {} });
   const newDate = el('input', { class: 'input', attrs: { type: 'date' } });
   const statusNode = el('div');
 
