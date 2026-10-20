@@ -527,6 +527,24 @@ test('мои темы: массовое добавление, код дисци�
   }
 });
 
+test('админ-панель: без журнала, вкладки QR, графиков и пояснительных алертов', () => {
+  const admin = read('public/js/admin.js');
+  const html = read('public/admin/index.html');
+  const dash = read('public/css/dashboard.css');
+  assert.ok(!admin.includes("label: 'Журнал действий'") && !admin.includes("label: 'QR и ссылки'"), 'вкладок журнала и QR в меню нет');
+  assert.ok(!admin.includes('renderQr') && !admin.includes('renderAudit'), 'функции этих разделов удалены');
+  assert.ok(!admin.includes('timelineChart'), 'графиков динамики в админ-панели нет');
+  assert.ok(!admin.includes('Динамика'), 'раздел графика убран вместе с подписью');
+  assert.ok(!html.includes('bcrypt') && !html.includes('card-tight'), 'пояснение про пароли убрано из сайдбара');
+  assert.ok(!admin.includes('Как выдать доступ') && !admin.includes("text: 'Важно: '"), 'пояснительные алерты убраны из вкладок');
+  assert.ok(!admin.includes('codeInput') && !admin.includes('Код дисциплины'), 'код дисциплины в админке не вводится');
+  assert.ok(admin.includes("text: 'Создать дисциплину и темы'"), 'кнопка в шапке создаёт дисциплину');
+  assert.ok(admin.includes('topicsModal({ discipline: created'), 'сразу после дисциплины открывается окно тем');
+  assert.ok(!admin.includes('Ко всем разделам'), 'прежняя кнопка перехода к списку разделов убрана');
+  assert.ok(admin.includes('qrModal'), 'ссылка и QR для группы остались в разделе дисциплин');
+  assert.match(dash, /\.filter-bar \.field\.date-pair \{/, 'поля дат в отчётах стоят в одну строку');
+});
+
 test('нет цикла редиректов между /admin/ и /login для преподавателя', () => {
   const login = read('public/js/login.js');
   const admin = read('public/js/admin.js');

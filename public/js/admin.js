@@ -24,7 +24,7 @@ import {
   loadStudentBase,
   studentUrl,
 } from './api.js';
-import { timelineChart, distributionBars, positiveBar } from './charts.js';
+import { distributionBars, positiveBar } from './charts.js';
 
 const state = {
   user: null,
@@ -44,8 +44,6 @@ const VIEWS = [
   { key: 'teachers', label: 'Преподаватели', desc: 'аккаунты, доступы, сброс паролей' },
   { key: 'disciplines', label: 'Дисциплины и темы', desc: 'дисциплины, темы занятий, ссылки и QR-коды' },
   { key: 'reports', label: 'Отчёты', desc: 'сквозная агрегация по всем преподавателям' },
-  { key: 'qr', label: 'QR и ссылки', desc: 'материалы, которые отправляют группам' },
-  { key: 'audit', label: 'Журнал действий', desc: 'кто и что менял в системе' },
 ];
 
 /* ------------------------------ каркас ------------------------------ */
@@ -78,20 +76,29 @@ function go(view, params = {}) {
   if (view === 'overview') return renderOverview();
   if (view === 'teachers') return renderTeachers();
   if (view === 'disciplines') return renderDisciplines();
-  if (view === 'reports') return renderReports();
-  if (view === 'qr') return renderQr();
-  return renderAudit();
+  return renderReports();
 }
 
 function pageHead(title, subtitle, actions = []) {
   const buttons = [...actions];
   if (state.view !== 'overview') {
+    // Кнопка создаёт дисциплину за нужным преподавателем и сразу даёт добавить темы.
     buttons.unshift(
       el('button', {
         class: 'btn btn-sm btn-ghost',
         attrs: { type: 'button' },
-        text: 'Ко всем разделам',
-        on: { click: () => go('overview') },
+        text: 'Создать дисциплину и темы',
+        on: {
+          click: async () => {
+            await reloadStructure();
+            disciplineFormModal({
+              onSaved: (created) => {
+                go('disciplines');
+                if (created) topicsModal({ discipline: created, onSaved: () => renderDisciplines() });
+              },
+            });
+          },
+        },
       })
     );
   }
@@ -174,13 +181,6 @@ async function renderOverview() {
         statCard('Средний балл', data.avg_overall === null ? '-' : fmtNum(data.avg_overall, 2), 'по всем дисциплинам'),
         statCard('Преподавателей', counts.teachers, `дисциплин: ${counts.disciplines}`),
         statCard('Комментариев', counts.comments, `тем занятий: ${counts.topics}`),
-      ]),
-      el('section', { class: 'section' }, [
-        el('div', { class: 'section-title' }, [
-          el('h2', { text: 'Динамика ответов' }),
-          el('span', { class: 'tiny muted', text: `по занятию: ${counts.lesson} · итоговых: ${counts.final}` }),
-        ]),
-        el('div', { class: 'card' }, [timelineChart(data.timeline || [])]),
       ]),
       el('section', { class: 'section' }, [
         el('div', { class: 'section-title' }, [el('h2', { text: 'Дисциплины по числу ответов' })]),
@@ -467,10 +467,6 @@ async function renderTeachers() {
           on: { click: () => teacherFormModal({ onSaved: refresh }) },
         }),
       ]),
-      el('div', { class: 'alert' }, [
-        el('strong', { text: 'Как выдать доступ: ' }),
-        'нажмите "Новый преподаватель", укажите логин и ФИО. Пароль сгенерируется и будет показан один раз - передайте его преподавателю. При первом входе он обязан сменить пароль.',
-      ]),
       table(
         [
           { label: 'Преподаватель' },
@@ -493,7 +489,6 @@ async function renderTeachers() {
 
 function disciplineFormModal({ discipline = null, onSaved }) {
   const titleInput = el('input', { class: 'input', attrs: { value: discipline ? discipline.title : '', placeholder: 'Дискретная математика' } });
-  const codeInput = el('input', { class: 'input', attrs: { value: discipline?.code || '', placeholder: 'DM-201' } });
 
   const teacherSelect = el('select', { class: 'select' }, [
     el('option', { text: 'не назначен', attrs: { value: '' } }),
@@ -512,7 +507,6 @@ function disciplineFormModal({ discipline = null, onSaved }) {
   const statusNode = el('div');
   const content = el('div', {}, [
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Название' }), titleInput]),
-    el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Код дисциплины (необязательно)' }), codeInput]),
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Преподаватель' }), teacherSelect]),
     el('div', { class: 'field' }, [el('label', { class: 'label', text: 'Статус' }), activeSelect]),
     statusNode,
@@ -526,17 +520,17 @@ function disciplineFormModal({ discipline = null, onSaved }) {
     }
     const payload = {
       title: titleInput.value.trim(),
-      code: codeInput.value.trim() || null,
       teacher_id: teacherSelect.value ? Number(teacherSelect.value) : null,
       is_active: activeSelect.value === '1',
     };
     try {
+      let created = null;
       if (discipline) await api.patch(`/api/admin/disciplines/${discipline.id}`, payload);
-      else await api.post('/api/admin/disciplines', payload);
+      else created = (await api.post('/api/admin/disciplines', payload)).discipline;
       instance.close();
       toast(discipline ? 'Дисциплина обновлена' : 'Дисциплина создана', 'ok');
       await reloadStructure();
-      onSaved?.();
+      onSaved?.(created);
     } catch (error) {
       mount(statusNode, el('div', { class: 'alert alert-danger', text: error.message }));
     }
@@ -654,10 +648,6 @@ async function renderDisciplines() {
           attrs: { type: 'button' },
           on: { click: () => disciplineFormModal({ onSaved: refresh }) },
         }),
-      ]),
-      el('div', { class: 'alert' }, [
-        el('strong', { text: 'Важно: ' }),
-        'студенты видят только дисциплины с хотя бы одной активной темой. Для анкеты по занятию темы обязательны.',
       ]),
       state.disciplines.length === 0
         ? el('div', { class: 'card empty', text: 'Дисциплин пока нет. Начните с создания дисциплины и назначения преподавателя.' })
@@ -972,78 +962,6 @@ function qrModal({ discipline = null, topic = null }) {
   });
 }
 
-async function renderQr() {
-  setAlert('');
-  try {
-    await reloadStructure();
-  } catch (error) {
-    setAlert(error.message, 'danger');
-  }
-
-  mount(root, [
-    pageHead('QR-коды и ссылки', 'Распечатайте QR-код или отправьте ссылку в чат группы'),
-    el('div', { class: 'card' }, [
-      el('h2', { text: 'Универсальная ссылка' }),
-      el('p', { class: 'soft small', text: 'Студент сам выберет дисциплину, тему и тип анкеты.' }),
-      el(
-        'div',
-        { class: 'copy-row' },
-        (() => {
-          const url = studentUrl('/form.html');
-          const input = el('input', { class: 'input', attrs: { readonly: true, value: url } });
-          return [
-            input,
-            el('button', {
-              class: 'btn btn-sm',
-              text: 'Скопировать',
-              attrs: { type: 'button' },
-              on: {
-                click: async () => {
-                  const ok = await copyText(url);
-                  toast(ok ? 'Скопировано' : 'Скопируйте вручную', ok ? 'ok' : 'danger');
-                },
-              },
-            }),
-            el('a', { class: 'btn btn-sm btn-ghost', attrs: { href: '/api/admin/qr.png', download: 'qr-feedback.png' }, text: 'QR-код (PNG)' }),
-          ];
-        })()
-      ),
-    ]),
-    el('section', { class: 'section' }, [
-      el('h2', { text: 'Ссылки по дисциплинам' }),
-      state.disciplines.length === 0
-        ? el('div', { class: 'card empty', text: 'Сначала создайте дисциплину.' })
-        : el(
-            'div',
-            { class: 'card-list' },
-            state.disciplines.map((discipline) =>
-              el('div', { class: 'card card-tight' }, [
-                el('div', { class: 'tile-title', text: discipline.title }),
-                el('div', { class: 'tile-meta' }, [
-                  discipline.code ? el('span', { class: 'badge', text: discipline.code }) : null,
-                  el('span', { text: discipline.teacher_name || 'преподаватель не назначен' }),
-                  discipline.is_active ? el('span', { class: 'badge badge-ok', text: 'открыта' }) : el('span', { class: 'badge badge-warn', text: 'выключена' }),
-                ]),
-                el('div', { class: 'btn-row' }, [
-                  el('button', {
-                    class: 'btn btn-sm btn-primary',
-                    text: 'Показать QR',
-                    attrs: { type: 'button' },
-                    on: { click: () => qrModal({ discipline }) },
-                  }),
-                  el('a', {
-                    class: 'btn btn-sm btn-ghost',
-                    attrs: { href: buildFormUrl({ disciplineId: discipline.id }), target: '_blank', rel: 'noopener' },
-                    text: 'Открыть анкету',
-                  }),
-                ]),
-              ])
-            )
-          ),
-    ]),
-  ]);
-}
-
 /* ------------------------------ Отчёты ------------------------------ */
 
 async function renderReports() {
@@ -1160,8 +1078,10 @@ async function renderReports() {
         el('div', { class: 'field' }, [el('label', { text: 'Преподаватель' }), teacherSelect]),
         el('div', { class: 'field' }, [el('label', { text: 'Дисциплина' }), disciplineSelect]),
         el('div', { class: 'field' }, [el('label', { text: 'Тип анкеты' }), formSelect]),
-        el('div', { class: 'field' }, [el('label', { text: 'С даты' }), fromInput]),
-        el('div', { class: 'field' }, [el('label', { text: 'По дату' }), toInput]),
+        el('div', { class: 'field date-pair' }, [
+          el('div', { class: 'date-pair-col' }, [el('label', { text: 'С даты' }), fromInput]),
+          el('div', { class: 'date-pair-col' }, [el('label', { text: 'По дату' }), toInput]),
+        ]),
         el('div', { class: 'btn-row' }, [
           el('button', { class: 'btn btn-sm btn-primary', text: 'Применить', attrs: { type: 'button' }, on: { click: render } }),
           el('button', {
@@ -1187,10 +1107,6 @@ async function renderReports() {
         statCard('По занятиям', report.by_form?.lesson ?? 0),
         statCard('Итоговых', report.by_form?.final ?? 0),
       ]),
-      el('section', { class: 'section' }, [
-        el('div', { class: 'section-title' }, [el('h2', { text: 'Динамика' })]),
-        el('div', { class: 'card' }, [timelineChart(report.timeline || [])]),
-      ]),
       report.total_responses === 0 ? el('div', { class: 'alert alert-warn', text: 'По выбранным фильтрам нет ни одной анкеты.' }) : null,
       ...formBlocks,
     ]);
@@ -1201,35 +1117,6 @@ async function renderReports() {
 }
 
 /* ------------------------------ Журнал ------------------------------ */
-
-async function renderAudit() {
-  mount(root, el('div', { class: 'card' }, [el('div', { class: 'skeleton' })]));
-  setAlert('');
-  try {
-    const data = await api.get('/api/admin/audit?limit=200');
-    mount(root, [
-      pageHead('Журнал действий', 'Кто и что менял в системе (пароли и тексты отзывов в журнал не попадают)'),
-      data.events.length === 0
-        ? el('div', { class: 'card empty', text: 'Событий пока нет.' })
-        : table(
-            [{ label: 'Когда' }, { label: 'Кто' }, { label: 'Роль' }, { label: 'Действие' }, { label: 'Объект' }, { label: 'Детали' }],
-            data.events.map((event) =>
-              el('tr', {}, [
-                el('td', { class: 'small', text: fmtDateTime(event.created_at) }),
-                el('td', { class: 'mono small', text: event.actor_login || 'anonymous' }),
-                el('td', { class: 'small', text: event.actor_role || '' }),
-                el('td', {}, [el('span', { class: 'badge', text: event.action })]),
-                el('td', { class: 'small', text: event.entity ? `${event.entity} #${event.entity_id ?? ''}` : '-' }),
-                el('td', { class: 'tiny muted', text: event.details || '' }),
-              ])
-            )
-          ),
-    ]);
-  } catch (error) {
-    setAlert(error.message, 'danger');
-    mount(root, el('div', { class: 'card empty', text: 'Не удалось загрузить журнал.' }));
-  }
-}
 
 /* ------------------------------ Старт ------------------------------ */
 
