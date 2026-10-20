@@ -160,6 +160,13 @@ test('vps-status.sh только читает: ни одного изменен�
   assert.ok(!/(cat|echo|printf)[^\n]*>\s*\/(etc|var|usr|run|root)\//.test(s), 'нет записи в системные файлы');
   assert.match(s, /curl -s -o \/dev\/null/);
   assert.match(s, /ALLOWED_HOSTS пуст/);
+  // и главный вопрос владельца: "ссылка есть, а почему не открывается"
+  assert.match(s, /Что видит посетитель извне/);
+  assert.match(s, /ss -lnt/, 'сначала проверяем, слушает ли nginx порт');
+  assert.match(s, /отвечает с кодом \$code/);
+  assert.match(s, /правила нет в ufw - откройте его/);
+  assert.match(s, /фильтр провайдера/, 'ответ должен отличаться от "внутри всё хорошо"');
+  assert.match(s, /панели не опубликованы \(:8080 и :8090 в конфиге нет\)/);
 });
 
 test('vps-status.sh читает .env и не падает без него', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, (t) => {

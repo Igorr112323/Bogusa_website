@@ -215,6 +215,38 @@ else
   warn "сертификата нет - сайт работает по http; для https нужен домен и DOMAIN=ваш.домен ADMIN_EMAIL=вы@почта bash deploy/vps-setup.sh"
 fi
 
+# --- что видит посетитель извне --------------------------------------------
+# это главный ответ на "почему не открывается": слушает ли nginx и проходит ли
+# запрос через фаервол на публичный адрес
+say ""
+say "Что видит посетитель извне"
+pub_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+site_conf="/etc/nginx/sites-enabled/feedback"
+listen_ports="$(grep -hoE 'listen [0-9]+' "$site_conf" 2>/dev/null | awk '{print $2}' | sort -un | tr '\n' ' ')"
+[ -n "${listen_ports// /}" ] || listen_ports="80 "
+for port in $listen_ports; do
+  if [ -z "$(ss -lnt 2>/dev/null | awk -v p="$port" '$4 ~ (":" p "$") { print; exit }')" ]; then
+    bad "порт $port: nginx его не слушает - проверьте: nginx -t && systemctl status nginx --no-pager | head -20"
+    continue
+  fi
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "http://${pub_ip:-127.0.0.1}:${port}/" 2>/dev/null || true)"
+  code="${code:-000}"
+  if [ "$code" = "000" ]; then
+    if ufw status 2>/dev/null | grep -qE "^${port}(/tcp)? +ALLOW IN"; then
+      bad "порт $port: приложение слушает, но запрос на ${pub_ip}:${port} не проходит - фильтр провайдера или iptables в обход ufw"
+    else
+      bad "порт $port: правила нет в ufw - откройте его: cd $APP_DIR && PUBLISH_PANELS=1 bash deploy/vps-setup.sh"
+    fi
+  elif [ "$code" = "404" ]; then
+    warn "порт $port: корень отвечает 404 - для панелей это норма, проверьте /login и /admin/"
+  else
+    good "порт $port: на ${pub_ip:-127.0.0.1}:${port} отвечает с кодом $code"
+  fi
+done
+if ! grep -q "listen 8080;" "$site_conf" 2>/dev/null; then
+  warn "панели не опубликованы (:8080 и :8090 в конфиге нет) - вход только через ssh -L 3001:localhost:3001"
+fi
+
 # --- бэкапы ---------------------------------------------------------------
 say ""
 say "Бэкапы"
