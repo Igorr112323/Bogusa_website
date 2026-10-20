@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#4550a8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Админ-панель · Анонимная обратная связь</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/css/styles.css?v=1.0.32" />
+    <link rel="stylesheet" href="/css/dashboard.css?v=1.0.32" />
+  </head>
+  <body class="app-shell">
+    <header class="site-header">
+      <div class="container">
+        <a class="brand" href="/admin/">
+          <span>Админ-панель</span>
+        </a>
+        <span class="nav-spacer"></span>
+        <nav class="nav-links" aria-label="Действия">
+          <span class="badge" id="user-badge">…</span>
+          <button class="btn btn-sm btn-ghost" type="button" id="logout-button">Выйти</button>
+        </nav>
+      </div>
+    </header>
+
+    <div class="container app-body">
+      <aside class="sidebar">
+        <nav class="side-nav" id="side-nav" aria-label="Разделы"></nav>
+      </aside>
+
+      <main class="app-main">
+        <div id="view-alerts"></div>
+        <div id="view-root">
+          <div class="card"><div class="skeleton"></div><div class="skeleton"></div></div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="/js/admin.js?v=1.0.32"></script>
+  </body>
+</html>
