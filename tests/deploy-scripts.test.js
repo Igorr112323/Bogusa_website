@@ -28,13 +28,14 @@ const ROOT = path.resolve(__dirname, '..');
 const SETUP = path.join(ROOT, 'deploy', 'vps-setup.sh');
 const UNIT = path.join(ROOT, 'deploy', 'feedback.service');
 const BACKUP = path.join(ROOT, 'deploy', 'backup.sh');
+const STATUS = path.join(ROOT, 'deploy', 'vps-status.sh');
 
 const read = (file) => fs.readFileSync(file, 'utf8');
 const bash = spawnSync('bash', ['--version'], { encoding: 'utf8' });
 const haveBash = bash.status === 0;
 
 test('файлы deploy/ лежат в LF, без BOM (CRLF ломает shebang на сервере)', () => {
-  for (const file of [SETUP, UNIT, BACKUP]) {
+  for (const file of [SETUP, UNIT, BACKUP, STATUS]) {
     const buf = fs.readFileSync(file);
     assert.ok(!buf.includes(0x0d), `${path.basename(file)} содержит CR - bash скажет bad interpreter`);
     assert.ok(!(buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf), `${path.basename(file)}: BOM не нужен`);
@@ -42,7 +43,7 @@ test('файлы deploy/ лежат в LF, без BOM (CRLF ломает shebang
 });
 
 test('синтаксис shell-скриптов (bash -n)', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, () => {
-  for (const file of [SETUP, BACKUP]) {
+  for (const file of [SETUP, BACKUP, STATUS]) {
     const res = spawnSync('bash', ['-n', file], { encoding: 'utf8' });
     assert.equal(res.status, 0, `${path.basename(file)}: ${res.stderr}`);
   }
@@ -135,6 +136,48 @@ test('README отправляет на сервер одну команду ус
   const readme = read(path.join(ROOT, 'README.md'));
   assert.match(readme, /bash deploy\/vps-setup\.sh/);
   assert.match(readme, /DRY_RUN=1/);
+  assert.match(readme, /bash deploy\/vps-status\.sh/, 'про состояние сервера тоже должно быть написано');
+});
+
+test('vps-status.sh только читает: ни одного изменения системы', () => {
+  const s = read(STATUS);
+  assert.match(s, /set -uo pipefail/, 'без -e: проверка не должна падать на первом же отсутствии пакета');
+  assert.match(s, /\[ "\$BAD" -eq 0 \] \|\| exit 1/, 'код возврата 1, если что-то не настроено');
+  const dangerous = /^\s*(systemctl|service|sed -i|rm |mv |cp |install |mkdir|touch|ufw |apt-get |apt |ln |nginx -s|fail2ban-client set|chmod|chown)\b/gm;
+  assert.deepEqual(s.match(dangerous) || [], [], 'скрипт статуса не имеет права ничего менять');
+  assert.ok(!/(cat|echo|printf)[^\n]*>\s*\/(etc|var|usr|run|root)\//.test(s), 'нет записи в системные файлы');
+  assert.match(s, /curl -s -o \/dev\/null/);
+  assert.match(s, /ALLOWED_HOSTS пуст/);
+});
+
+test('vps-status.sh читает .env и не падает без него', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, (t) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'feedback-status-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(tmp, '.env'), [
+    'NODE_ENV=production',
+    'PUBLIC_BASE_URL=https://feedback.example.ru',
+    'ALLOWED_HOSTS=feedback.example.ru',
+    'COOKIE_SECURE=true',
+    'JWT_SECRET=abcdef',
+    'ADMIN_LOGIN=admin',
+    'ADMIN_PASSWORD=Sup3rSecret!',
+    'PORT=3000',
+    'STAFF_PORT=3001',
+    `DB_FILE=${tmp}/feedback.sqlite`,
+    '',
+  ].join('\n'), 'utf8');
+
+  const withEnv = spawnSync('bash', [STATUS], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, APP_DIR: tmp } });
+  assert.ok(withEnv.status === 0 || withEnv.status === 1, `статус упал: ${withEnv.stderr}`);
+  assert.match(withEnv.stdout, /Настройки приложения \(\.env\)/);
+  assert.match(withEnv.stdout, /PUBLIC_BASE_URL=https:\/\/feedback\.example\.ru/);
+  assert.match(withEnv.stdout, /ADMIN_PASSWORD задан/);
+  assert.ok(!/НЕТ\s+\.env есть/.test(withEnv.stdout), 'секрет не должен попадать в вывод');
+  assert.ok(!withEnv.stdout.includes('Sup3rSecret'), 'пароль администратора в выводе быть не должно');
+
+  const empty = spawnSync('bash', [STATUS], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, APP_DIR: path.join(tmp, 'нет-такого-каталога') } });
+  assert.equal(empty.status, 1, 'без .env код возврата обязан быть 1');
+  assert.match(empty.stdout, /\.env нет/);
 });
 
 test('DRY_RUN реально готовит .env, unit-файл и конфиг nginx', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, (t) => {
