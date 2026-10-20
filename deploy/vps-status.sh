@@ -32,6 +32,12 @@ say "=================================================="
 # --- пакеты ---------------------------------------------------------------
 say ""
 say "Программа и пакеты"
+app_version="$(node -p 'require(process.argv[1]).version' "$APP_DIR/package.json" 2>/dev/null || echo '')"
+if [ -n "$app_version" ]; then
+  say "        версия приложения: $app_version"
+else
+  bad "в $APP_DIR нет package.json - похоже, репозиторий тут не скачан (нужен /opt/anketa)"
+fi
 if command -v node >/dev/null 2>&1; then
   node_version="$(node -v 2>/dev/null)"
   node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"

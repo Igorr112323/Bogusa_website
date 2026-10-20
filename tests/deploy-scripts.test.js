@@ -188,6 +188,9 @@ test('vps-setup.sh проверяет, что приложение отвеча�
   assert.match(s, /for attempt in 1 2 3 4 5; do[\s\S]{0,200}fail2ban-client status sshd/, 'fail2ban: сокет появляется с задержкой');
   assert.match(s, /grep -aE "not ok\|error: /, 'упавший npm test должен показывать первую ошибку, а не хвост');
   assert.match(s, /echo "  Приложение:       \$app_state"/);
+  assert.match(s, /Версия приложения:/, 'в итоге должен быть номер версии - по нему видно, что git pull сработал');
+  const status = read(STATUS);
+  assert.match(status, /версия приложения/, 'скрипт статуса тоже показывает версию');
 });
 
 test('смена пароля администратора доступна командой npm', () => {

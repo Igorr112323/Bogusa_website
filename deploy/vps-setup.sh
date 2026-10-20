@@ -425,6 +425,7 @@ chmod 644 "$(p /etc/cron.d/feedback-backup)"
 echo
 echo "=================================================================="
 echo "  Готово"
+echo "  Версия приложения: $(node -p "require('$APP_DIR/package.json').version" 2>/dev/null || echo '?')  (если вместо номера стоит ?, git pull не сработал)"
 echo "=================================================================="
 echo "  Сайт студентов:   $SCHEME://$BASE_HOST/"
 if [ -z "$DOMAIN" ]; then
