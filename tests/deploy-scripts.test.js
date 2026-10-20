@@ -200,6 +200,9 @@ test('vps-setup.sh проверяет, что приложение отвеча�
   assert.match(s, /for attempt in 1 2 3 4 5; do[\s\S]{0,200}fail2ban-client status sshd/, 'fail2ban: сокет появляется с задержкой');
   assert.match(s, /grep -aE "not ok\|error: /, 'упавший npm test должен показывать первую ошибку, а не хвост');
   assert.match(s, /echo "  Приложение:       \$app_state"/);
+  assert.match(s, /Ссылки \(в скобках код ответа/);
+  assert.match(s, /код ответа, проверенный на сервере/);
+  assert.match(s, /ВНИМАНИЕ: ссылка отвечает/);
   assert.match(s, /Версия приложения:/, 'в итоге должен быть номер версии - по нему видно, что git pull сработал');
   const status = read(STATUS);
   assert.match(status, /версия приложения/, 'скрипт статуса тоже показывает версию');
@@ -207,14 +210,23 @@ test('vps-setup.sh проверяет, что приложение отвеча�
 
 test('публикация панелей - по явному флагу, по умолчанию закрыта', () => {
   const s = read(SETUP);
-  assert.match(s, /PUBLISH_PANELS="\$\{PUBLISH_PANELS:-0\}"/, 'по умолчанию панели не публикуются');
+  assert.match(s, /PUBLISH_PANELS="\$\{PUBLISH_PANELS:-keep\}"/, 'по умолчанию - повторять уже настроенное');
+  assert.match(s, /ADMIN_PUBLISH_PORT="\$\{ADMIN_PUBLISH_PORT:-8090\}"/);
+  assert.match(s, /if \[ "\$PUBLISH_PANELS" = "keep" \]; then[\s\S]{0,260}grep -q "listen \$\{PUBLISH_PANELS_PORT\};"/);
   assert.match(s, /PUBLISH_PANELS_PORT="\$\{PUBLISH_PANELS_PORT:-8080\}"/);
-  assert.match(s, /sys ufw --force allow "\$\{PUBLISH_PANELS_PORT\}\/tcp"/);
-  assert.match(s, /sys ufw delete allow "\$\{PUBLISH_PANELS_PORT\}\/tcp"/, 'запуск без флага закрывает порт обратно');
-  assert.match(s, /listen \[::\]:\$\{PUBLISH_PANELS_PORT\};/, 'nginx слушает порт публикации');
-  assert.ok(!/ufw allow \$\{PUBLISH_PANELS_PORT\}/.test(s.replace(/--force /g, '')), 'правило ставится только внутри ветки флага');
+  assert.match(s, /for panel_port in "\$\{PUBLISH_PANELS_PORT\}" "\$\{ADMIN_PUBLISH_PORT\}"; do/);
+  assert.match(s, /sys ufw --force allow "\$\{panel_port\}\/tcp"/);
+  assert.match(s, /sys ufw delete allow "\$\{panel_port\}\/tcp"/, 'запуск без флага закрывает порт обратно');
+  assert.match(s, /listen \[::\]:\$\{panel_port\};/, 'nginx слушает оба порта публикации');
+  assert.match(s, /location \^~ \/admin\/ \{ return 404; \}/, 'на порту преподавателя админки быть не должно');
+  assert.match(s, /location \^~ \/portal\/ \{ return 404; \}/, 'на порту админки кабинета преподавателя быть не должно');
+  assert.equal(s.split('proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};').length - 1, 2, 'публичных блоков на staff-порт ровно два');
+  assert.match(s, /printf 'dry-run'; return 0; fi/, 'в dry-run итог не дергает сеть');
+  assert.match(s, /2>\/dev\/null \|\| true\)"\n  printf '%s' "\$\{out:-000\}"/, 'отказ curl не должен обрывать итог');
   const readme = read(path.join(ROOT, 'README.md'));
   assert.match(readme, /PUBLISH_PANELS=1/);
+  assert.match(readme, /:8090\/admin\//, 'в README должен быть адрес админки');
+  assert.match(readme, /PUBLISH_PANELS=0/, 'и способ закрыть панели обратно');
   assert.match(readme, /пароль идёт открытым текстом|пароль в сети читается/, 'о риске должно быть написано рядом');
 });
 
@@ -259,7 +271,7 @@ test('ошибка внутри скрипта печатается, а не о�
   assert.match(s, /health="\$\(curl[\s\S]{0,160}\|\| true\)"/);
   assert.match(s, /TESTS_RESULT="\$\(grep[\s\S]{0,160}\|\| true\)"/, 'тот же ловуш pipefail в отчёте по тестам');
   assert.match(s, /if \[ "\$health" = "200" \]; then break; fi/);
-  assert.match(s, /ufw status 2>\/dev\/null \| grep -qE "\^\$\{PUBLISH_PANELS_PORT\}/, 'перед delete проверяем наличие правила');
+  assert.match(s, /ufw status 2>\/dev\/null \| grep -qE "\^\$\{panel_port\}/, 'перед delete проверяем наличие правила');
 });
 
 test('первая копия базы делается сразу, а не к 03:00', () => {

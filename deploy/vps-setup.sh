@@ -15,8 +15,8 @@
 #   ADMIN_EMAIL       почта для Let's Encrypt (без неё certbot не запускается, а печатается команда)
 #   STAFF_DOMAIN      отдельный домен для входа и панелей (иначе они доступны только через туннель)
 #   STAFF_ALLOW_CIDRS   через запятую: подсети, которым разрешён доступ к панелям (например 10.0.0.0/8)
-#   PUBLISH_PANELS=1    опубликовать вход и панели на порту 8080: заходить можно с любого
-#                       устройства, но без шифрования; PUBLISH_PANELS_PORT - другой порт
+#   PUBLISH_PANELS=1    опубликовать панели: кабинет преподавателя на :8080, админка на :8090
+#                       (PUBLISH_PANELS_PORT и ADMIN_PUBLISH_PORT - свои порты, =0 - не публиковать)
 #   DATA_OWNER        пользователь-владелец (по умолчанию feedback; если создать не удалось - root)
 #   SKIP_TESTS=1      не запускать npm test
 #   SSH_KEY_ONLY=off  не трогать вход по паролю, даже когда ключ уже лежит в authorized_keys
@@ -40,10 +40,11 @@ DOMAIN="${DOMAIN:-}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-}"
 STAFF_DOMAIN="${STAFF_DOMAIN:-}"
 STAFF_ALLOW_CIDRS="${STAFF_ALLOW_CIDRS:-}"
-# Публикация входа и панелей наружу: 0 - только SSH-туннель (безопасно по умолчанию),
-# 1 - nginx будет отдавать их на отдельном порту, и заходить можно с любого устройства.
-PUBLISH_PANELS="${PUBLISH_PANELS:-0}"
+# Публикация панелей наружу: 0 - только SSH-туннель, 1 - nginx отдаёт панели на отдельных
+# портах (преподаватель и админ раздельно), keep - оставить как уже настроено на сервере.
+PUBLISH_PANELS="${PUBLISH_PANELS:-keep}"
 PUBLISH_PANELS_PORT="${PUBLISH_PANELS_PORT:-8080}"
+ADMIN_PUBLISH_PORT="${ADMIN_PUBLISH_PORT:-8090}"
 DATA_OWNER="${DATA_OWNER:-feedback}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
 SSH_KEY_ONLY="${SSH_KEY_ONLY:-auto}"
@@ -70,6 +71,16 @@ sys() {
   fi
 }
 p() { printf '%s%s' "$ROOT_PREFIX" "$1"; }   # путь с префиксом: в dry-run всё уходит в /tmp
+
+# keep: повторяем уже принятое решение - случайный повторный запуск без флага не должен
+# внезапно закрыть панели, которые владелец опубликовал
+if [ "$PUBLISH_PANELS" = "keep" ]; then
+  if grep -q "listen ${PUBLISH_PANELS_PORT};" "$(p /etc/nginx/sites-enabled/feedback)" 2>/dev/null; then
+    PUBLISH_PANELS=1
+  else
+    PUBLISH_PANELS=0
+  fi
+fi
 
 # --- 0. Проверка DOMAIN/ADMIN_EMAIL ----------------------------------------
 # Домен нужно сначала купить и прописать A-запись; строки-заглушки из инструкций
@@ -155,13 +166,15 @@ log "3/9 фаервол: 22, 80, 443; порты приложения наруж
 sys ufw allow OpenSSH
 sys ufw allow 80
 sys ufw allow 443
-if [ "$PUBLISH_PANELS" = "1" ]; then
-  sys ufw --force allow "${PUBLISH_PANELS_PORT}/tcp"
-else
-  # публиковали раньше - при обычном запуске закрываем обратно
-  if ufw status 2>/dev/null | grep -qE "^${PUBLISH_PANELS_PORT}(/tcp)? +ALLOW IN"; then
-    sys ufw delete allow "${PUBLISH_PANELS_PORT}/tcp"
+for panel_port in "${PUBLISH_PANELS_PORT}" "${ADMIN_PUBLISH_PORT}"; do
+  if [ "$PUBLISH_PANELS" = "1" ]; then
+    sys ufw --force allow "${panel_port}/tcp"
+  elif ufw status 2>/dev/null | grep -qE "^${panel_port}(/tcp)? +ALLOW IN"; then
+    sys ufw delete allow "${panel_port}/tcp"   # публиковали раньше - закрываем обратно
   fi
+done
+if [ "$PUBLISH_PANELS" = "1" ]; then
+  note "панели опубликованы: преподаватель :${PUBLISH_PANELS_PORT}, админка :${ADMIN_PUBLISH_PORT}"
 fi
 sys ufw --force enable
 sys ufw status verbose
@@ -405,24 +418,35 @@ mkdir -p "$(dirname "$nginx_conf")" "$(p /etc/nginx/sites-enabled)"
   echo "    }"
   echo "}"
   if [ "$PUBLISH_PANELS" = "1" ]; then
-    echo
-    echo "# вход и панели на отдельном порту: доступен всем, кто знает адрес (http без шифрования)"
-    echo "server {"
-    echo "    listen ${PUBLISH_PANELS_PORT};"
-    echo "    listen [::]:${PUBLISH_PANELS_PORT};"
-    echo "    server_name _;"
-    echo
-    echo "    client_max_body_size 512k;"
-    echo "    access_log /var/log/nginx/feedback-staff.access.log;"
-    echo
-    echo "    location / {"
-    echo "        proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};"
-    echo "        proxy_set_header Host \$host;"
-    echo "        proxy_set_header X-Real-IP \$remote_addr;"
-    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
-    echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
-    echo "    }"
-    echo "}"
+    # Кабинет преподавателя и админка - на разных портах. Приложение одно (порт
+    # $STAFF_PORT_ENV), разделение делает nginx: у админки свой адрес, который не
+    # попадётся преподавателю со ссылкой на кабинет. Права по-прежнему проверяет сервер.
+    for panel in "${PUBLISH_PANELS_PORT}:teacher" "${ADMIN_PUBLISH_PORT}:admin"; do
+      panel_port="${panel%%:*}"; panel_role="${panel##*:}"
+      echo
+      echo "server {"
+      echo "    listen ${panel_port};"
+      echo "    listen [::]:${panel_port};"
+      echo "    server_name _;"
+      echo
+      echo "    client_max_body_size 512k;"
+      echo "    access_log /var/log/nginx/feedback-${panel_role}.access.log;"
+      echo
+      if [ "$panel_role" = "teacher" ]; then
+        echo "    location ^~ /admin/ { return 404; }   # админка - на порту ${ADMIN_PUBLISH_PORT}"
+      else
+        echo "    location ^~ /portal/ { return 404; }  # кабинет преподавателя - на порту ${PUBLISH_PANELS_PORT}"
+      fi
+      echo
+      echo "    location / {"
+      echo "        proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};"
+      echo "        proxy_set_header Host \$host;"
+      echo "        proxy_set_header X-Real-IP \$remote_addr;"
+      echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+      echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+      echo "    }"
+      echo "}"
+    done
   fi
   if [ -n "$STAFF_DOMAIN" ]; then
     echo
@@ -546,16 +570,49 @@ echo "  Логи:             journalctl -u feedback -n 50 --no-pager"
 echo "  Приложение:       $app_state"
 echo "  Автотесты:        $TESTS_RESULT"
 echo "  Let's Encrypt:    $certbot_state"
-echo "  Вход и панели:"
+# Коды снимаем на самом сервере: "ссылка есть" и "ссылка работает" - разные вещи.
+# Host передаём явным заголовком, так же, как это сделает браузер, идущий по чужой сети.
+probe() {   # probe порт путь -> HTTP-код
+  local port="$1" path="$2" out=""
+  if [ "$DRY_RUN" = "1" ]; then printf 'dry-run'; return 0; fi
+  out="$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 -H "Host: $BASE_HOST" \
+    "http://127.0.0.1:${port}${path}" 2>/dev/null || true)"
+  printf '%s' "${out:-000}"
+}
+code_student="$(probe "$PUBLIC_PORT_ENV" "/")"
+code_form="$(probe "$PUBLIC_PORT_ENV" "/form.html")"
+code_portal=""; code_tlogin=""; code_admin=""; code_alogin=""
 if [ "$PUBLISH_PANELS" = "1" ]; then
-  echo "    http://$BASE_HOST:$PUBLISH_PANELS_PORT/login   (опубликовано: PUBLISH_PANELS=1)"
-  echo "    внимание: вход идёт по http, пароль в сети читается любыми - заведите домен и"
-  echo "    пустите скрипт с DOMAIN=..., после этого сертификат и https включятся сами"
+  code_portal="$(probe "$PUBLISH_PANELS_PORT" "/portal/")"
+  code_tlogin="$(probe "$PUBLISH_PANELS_PORT" "/login")"
+  code_admin="$(probe "$ADMIN_PUBLISH_PORT" "/admin/")"
+  code_alogin="$(probe "$ADMIN_PUBLISH_PORT" "/login")"
+fi
+echo "  Ссылки (в скобках код ответа, проверенный на сервере; 200 - работает):"
+echo "    студентам:           $SCHEME://$BASE_HOST/             [$code_student]"
+echo "    анкета:              $SCHEME://$BASE_HOST/form.html    [$code_form]"
+if [ "$PUBLISH_PANELS" = "1" ]; then
+  echo "    преподавателю:       http://$BASE_HOST:$PUBLISH_PANELS_PORT/portal/   [$code_portal]"
+  echo "    вход преподавателя:  http://$BASE_HOST:$PUBLISH_PANELS_PORT/login     [$code_tlogin]"
+  echo "    администратору:      http://$BASE_HOST:$ADMIN_PUBLISH_PORT/admin/     [$code_admin]"
+  echo "    вход администратора: http://$BASE_HOST:$ADMIN_PUBLISH_PORT/login      [$code_alogin]"
+  echo "    это http: пароль в сети читается; когда появится домен - пустите скрипт с"
+  echo "    DOMAIN=домен, и он выдаст сертификат и включит https сам"
 elif [ -n "$STAFF_DOMAIN" ]; then
-  echo "    http://$STAFF_DOMAIN/login   (на сервере порт $STAFF_PORT_ENV наружу не открыт)"
+  echo "    вход и панели:       http://$STAFF_DOMAIN/login"
 else
-  echo "    на своём компьютере:  ssh -L 3001:localhost:3001 root@$BASE_HOST"
-  echo "    затем в браузере:       http://localhost:3001/login"
+  echo "    вход и панели:       на своём компьютере: ssh -L 3001:localhost:3001 root@$BASE_HOST,"
+  echo "                         затем http://localhost:3001/login"
+  echo "                         (открыть их для всех: PUBLISH_PANELS=1 bash deploy/vps-setup.sh)"
+fi
+if [ "$DRY_RUN" != "1" ]; then
+  for code in "$code_student" "$code_form" "$code_portal" "$code_tlogin" "$code_admin" "$code_alogin"; do
+    [ -z "$code" ] && continue
+    if [ "$code" != "200" ] && [ "$code" != "302" ]; then
+      echo "    ВНИМАНИЕ: ссылка отвечает $code - пришлите эти строки и вывод: journalctl -u feedback -n 30 --no-pager"
+      break
+    fi
+  done
 fi
 echo "  Логин администратора: admin, пароль - в файле $APP_DIR/.deploy-admin-password"
 echo "                        (cat $APP_DIR/.deploy-admin-password)"
