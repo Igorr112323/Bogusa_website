@@ -1245,15 +1245,31 @@ document.querySelector('#logout-button').addEventListener('click', async () => {
 (async function boot() {
   loadToken();
   loadStudentBase();
+  let me = null;
   try {
-    const { user } = await api.get('/api/auth/me');
-    if (!user || user.role !== 'admin') throw new Error('not admin');
-    state.user = user;
-    userBadge.textContent = `${user.full_name} · администратор`;
+    me = (await api.get('/api/auth/me')).user;
   } catch {
+    me = null;
+  }
+
+  if (!me) {
     window.location.replace('/login?next=/admin/');
     return;
   }
+
+  // Роль проверяем до редиректа: иначе вход с next=/admin/ вернул бы сюда же,
+  // и страница начала бы перезагрузиваться по кругу.
+  if (me.role !== 'admin') {
+    mount(root, el('div', { class: 'card' }, [
+      el('h1', { text: 'Недостаточно прав' }),
+      el('p', { class: 'soft', text: 'Это панель администратора, а вы вошли как преподаватель. Откройте кабинет - там ваши дисциплины, занятия и отчёты.' }),
+      el('a', { class: 'btn btn-primary', attrs: { href: '/portal/' }, text: 'Перейти в кабинет' }),
+    ]));
+    return;
+  }
+
+  state.user = me;
+  userBadge.textContent = `${me.full_name} · администратор`;
 
   if (state.user.must_change_password) {
     mount(root, el('div', { class: 'card' }, [

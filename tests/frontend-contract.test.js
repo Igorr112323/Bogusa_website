@@ -527,6 +527,16 @@ test('мои темы: массовое добавление, код дисци�
   }
 });
 
+test('нет цикла редиректов между /admin/ и /login для преподавателя', () => {
+  const login = read('public/js/login.js');
+  const admin = read('public/js/admin.js');
+  assert.ok(login.includes("target.startsWith('/admin')") && login.includes("user.role !== 'admin'"), 'вход игнорирует next=/admin/ для не-администратора');
+  assert.ok(login.includes("user.role === 'admin' ? '/admin/' : '/portal/'"), 'после входа адрес зависит от роли');
+  assert.ok(admin.includes("me.role !== 'admin'"), 'панель администратора проверяет роль');
+  assert.ok(admin.includes('Недостаточно прав') && admin.includes("href: '/portal/'"), 'преподаватель видит сообщение и ссылку на кабинет, а не вечный редирект');
+  assert.ok(admin.includes("window.location.replace('/login?next=/admin/')"), 'без сессии вход по-прежнему предлагается');
+});
+
 test('мои темы: карточки свёрнуты по умолчанию, свежая дисциплина вверху, подсказки убраны', () => {
   const portal = read('public/js/portal.js');
   assert.ok(portal.includes('const expandedCards = new Set()'), 'помнятся только раскрытые карточки, то есть по умолчанию всё свёрнуто');

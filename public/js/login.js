@@ -24,7 +24,14 @@ function safeNext(fallback) {
 
 function redirectFor(user) {
   const fallback = user.role === 'admin' ? '/admin/' : '/portal/';
-  window.location.replace(safeNext(fallback));
+  const target = safeNext(fallback);
+  // Параметр next может вести в панель, которая пользователю недоступна.
+  // Отправлять туда нельзя: получится цикл /admin/ -> /login?next=/admin/ -> /admin/.
+  if (target.startsWith('/admin') && user.role !== 'admin') {
+    window.location.replace(fallback);
+    return;
+  }
+  window.location.replace(target);
 }
 
 async function afterLogin(user, token) {
