@@ -92,8 +92,10 @@ test('vps-setup.sh: наружу 80/443, порты приложения и па
   assert.match(s, /ufw allow 443/);
   assert.ok(!/ufw allow (3000|3001)/.test(s), '3000/3001 не должны открываться: за ними только localhost');
   const staffProxy = 'proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};';
-  assert.equal(s.split(staffProxy).length - 1, 1, 'прокси на staff-порт пишется ровно один раз');
-  assert.ok(s.indexOf('if [ -n "$STAFF_DOMAIN" ]') < s.indexOf(staffProxy), 'staff-блок nginx только при заданном STAFF_DOMAIN');
+  // два способа опубликовать панели - и оба только по явному флагу владельца
+  assert.equal(s.split(staffProxy).length - 1, 2, 'staff-порт проксируется из блоков STAFF_DOMAIN и PUBLISH_PANELS');
+  assert.ok(s.indexOf('if [ -n "$STAFF_DOMAIN" ]') < s.lastIndexOf(staffProxy), 'staff-блок nginx только при заданном STAFF_DOMAIN');
+  assert.ok(s.indexOf('if [ "$PUBLISH_PANELS" = "1" ]; then') < s.indexOf(staffProxy), 'публикация на 8080 только при PUBLISH_PANELS=1');
   assert.match(s, /client_max_body_size/);
 });
 
@@ -201,6 +203,19 @@ test('vps-setup.sh проверяет, что приложение отвеча�
   assert.match(s, /Версия приложения:/, 'в итоге должен быть номер версии - по нему видно, что git pull сработал');
   const status = read(STATUS);
   assert.match(status, /версия приложения/, 'скрипт статуса тоже показывает версию');
+});
+
+test('публикация панелей - по явному флагу, по умолчанию закрыта', () => {
+  const s = read(SETUP);
+  assert.match(s, /PUBLISH_PANELS="\$\{PUBLISH_PANELS:-0\}"/, 'по умолчанию панели не публикуются');
+  assert.match(s, /PUBLISH_PANELS_PORT="\$\{PUBLISH_PANELS_PORT:-8080\}"/);
+  assert.match(s, /sys ufw --force allow "\$\{PUBLISH_PANELS_PORT\}\/tcp"/);
+  assert.match(s, /sys ufw --force delete "\$\{PUBLISH_PANELS_PORT\}\/tcp" \|\| true/, 'запуск без флага закрывает порт обратно');
+  assert.match(s, /listen \[::\]:\$\{PUBLISH_PANELS_PORT\};/, 'nginx слушает порт публикации');
+  assert.ok(!/ufw allow \$\{PUBLISH_PANELS_PORT\}/.test(s.replace(/--force /g, '')), 'правило ставится только внутри ветки флага');
+  const readme = read(path.join(ROOT, 'README.md'));
+  assert.match(readme, /PUBLISH_PANELS=1/);
+  assert.match(readme, /пароль идёт открытым текстом|пароль в сети читается/, 'о риске должно быть написано рядом');
 });
 
 test('смена пароля администратора доступна командой npm', () => {

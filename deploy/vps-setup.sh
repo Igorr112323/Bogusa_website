@@ -15,6 +15,8 @@
 #   ADMIN_EMAIL       почта для Let's Encrypt (без неё certbot не запускается, а печатается команда)
 #   STAFF_DOMAIN      отдельный домен для входа и панелей (иначе они доступны только через туннель)
 #   STAFF_ALLOW_CIDRS   через запятую: подсети, которым разрешён доступ к панелям (например 10.0.0.0/8)
+#   PUBLISH_PANELS=1    опубликовать вход и панели на порту 8080: заходить можно с любого
+#                       устройства, но без шифрования; PUBLISH_PANELS_PORT - другой порт
 #   DATA_OWNER        пользователь-владелец (по умолчанию feedback; если создать не удалось - root)
 #   SKIP_TESTS=1      не запускать npm test
 #   SSH_KEY_ONLY=off  не трогать вход по паролю, даже когда ключ уже лежит в authorized_keys
@@ -33,6 +35,10 @@ DOMAIN="${DOMAIN:-}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-}"
 STAFF_DOMAIN="${STAFF_DOMAIN:-}"
 STAFF_ALLOW_CIDRS="${STAFF_ALLOW_CIDRS:-}"
+# Публикация входа и панелей наружу: 0 - только SSH-туннель (безопасно по умолчанию),
+# 1 - nginx будет отдавать их на отдельном порту, и заходить можно с любого устройства.
+PUBLISH_PANELS="${PUBLISH_PANELS:-0}"
+PUBLISH_PANELS_PORT="${PUBLISH_PANELS_PORT:-8080}"
 DATA_OWNER="${DATA_OWNER:-feedback}"
 SKIP_TESTS="${SKIP_TESTS:-0}"
 SSH_KEY_ONLY="${SSH_KEY_ONLY:-auto}"
@@ -101,6 +107,12 @@ log "3/9 фаервол: 22, 80, 443; порты приложения наруж
 sys ufw allow OpenSSH
 sys ufw allow 80
 sys ufw allow 443
+if [ "$PUBLISH_PANELS" = "1" ]; then
+  sys ufw --force allow "${PUBLISH_PANELS_PORT}/tcp"
+else
+  # публиковали раньше - при обычном запуске закрываем обратно
+  sys ufw --force delete "${PUBLISH_PANELS_PORT}/tcp" || true
+fi
 sys ufw --force enable
 sys ufw status verbose
 
@@ -336,6 +348,26 @@ mkdir -p "$(dirname "$nginx_conf")" "$(p /etc/nginx/sites-enabled)"
   echo '        proxy_set_header Connection "";'
   echo "    }"
   echo "}"
+  if [ "$PUBLISH_PANELS" = "1" ]; then
+    echo
+    echo "# вход и панели на отдельном порту: доступен всем, кто знает адрес (http без шифрования)"
+    echo "server {"
+    echo "    listen ${PUBLISH_PANELS_PORT};"
+    echo "    listen [::]:${PUBLISH_PANELS_PORT};"
+    echo "    server_name _;"
+    echo
+    echo "    client_max_body_size 512k;"
+    echo "    access_log /var/log/nginx/feedback-staff.access.log;"
+    echo
+    echo "    location / {"
+    echo "        proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};"
+    echo "        proxy_set_header Host \$host;"
+    echo "        proxy_set_header X-Real-IP \$remote_addr;"
+    echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+    echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+    echo "    }"
+    echo "}"
+  fi
   if [ -n "$STAFF_DOMAIN" ]; then
     echo
     echo "server {"
@@ -447,7 +479,11 @@ echo "  Приложение:       $app_state"
 echo "  Автотесты:        $TESTS_RESULT"
 echo "  Let's Encrypt:    $certbot_state"
 echo "  Вход и панели:"
-if [ -n "$STAFF_DOMAIN" ]; then
+if [ "$PUBLISH_PANELS" = "1" ]; then
+  echo "    http://$BASE_HOST:$PUBLISH_PANELS_PORT/login   (опубликовано: PUBLISH_PANELS=1)"
+  echo "    внимание: вход идёт по http, пароль в сети читается любыми - заведите домен и"
+  echo "    пустите скрипт с DOMAIN=..., после этого сертификат и https включятся сами"
+elif [ -n "$STAFF_DOMAIN" ]; then
   echo "    http://$STAFF_DOMAIN/login   (на сервере порт $STAFF_PORT_ENV наружу не открыт)"
 else
   echo "    на своём компьютере:  ssh -L 3001:localhost:3001 root@$BASE_HOST"

@@ -77,6 +77,9 @@ if printf '%s' "$ufw_status" | grep -qi 'Status: active'; then
       bad "порт $port закрыт - студенты не дойдут до сайта"
     fi
   done
+  if grep -q "listen 8080;" /etc/nginx/sites-enabled/feedback 2>/dev/null || printf '%s' "$ufw_status" | grep -qE '^8080(/tcp)? +ALLOW IN'; then
+    warn "панели опубликованы на 8080 (PUBLISH_PANELS=1): вход доступен из любой сети и без шифрования - заведите домен, тогда https включится сам"
+  fi
   if printf '%s' "$ufw_status" | grep -qE '^(3000|3001)/tcp +ALLOW IN'; then
     warn "порты 3000/3001 открыты наружу: панели лучше прятать за SSH-туннель (команды: ufw deny 3001, ufw delete allow 3001)"
   else
