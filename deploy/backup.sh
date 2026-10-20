@@ -55,6 +55,6 @@ rm -f "$out.check"
 # старые копии: удаляем всё, что старше KEEP штук
 ls -1t "$BACKUP_DIR"/feedback-*.sqlite.gz 2>/dev/null | tail -n "+$((KEEP + 1))" | while read -r old; do
   rm -f "$old"
-done
+done || true   # списков может и не быть: отсутствие старых копий - не ошибка
 
 echo "копия: $out.gz ($(du -h "$out.gz" | cut -f1))"

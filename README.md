@@ -780,6 +780,11 @@ ssh root@IP-адрес "command -v git >/dev/null || apt-get -y install git; git
 DRY_RUN=1 bash deploy/vps-setup.sh                      # ничего не менять: показать план,
                                                         # а файлы подготовить в /tmp/feedback-dryroot
 DOMAIN=feedback.uni.ru ADMIN_EMAIL=me@uni.ru bash deploy/vps-setup.sh   # домен + Let's Encrypt
+                                                      # домен должен быть уже куплен и вести
+                                                      # A-запись на этот сервер: скрипт проверяет
+                                                      # DNS, не принимает строки-заглушки из
+                                                      # инструкций и вообще может работать без
+                                                      # домена - по IP-адресу
 STAFF_DOMAIN=feedback-uni.ru bash deploy/vps-setup.sh    # вход и панели на своём домене
 STAFF_ALLOW_CIDRS=10.0.0.0/8 bash deploy/vps-setup.sh    # ...и только из подсети вуза
 SKIP_TESTS=1 bash deploy/vps-setup.sh                    # без прогона автотестов
@@ -787,6 +792,7 @@ SSH_KEY_ONLY=off bash deploy/vps-setup.sh                 # не трогать 
 PUBLISH_PANELS=1 bash deploy/vps-setup.sh                 # вход и панели на :8080 для всех устройств
 PUBLISH_PANELS=1 PUBLISH_PANELS_PORT=9000 bash deploy/vps-setup.sh  # ...на другом порту
 TIMEZONE=Europe/Moscow bash deploy/vps-setup.sh           # часовой пояс для логов и бэкапов
+DOMAIN_CHECK=off bash deploy/vps-setup.sh                 # не проверять, что домен резолвится
 ```
 
 Что делать сразу после:

@@ -21,8 +21,13 @@
 #   SKIP_TESTS=1      не запускать npm test
 #   SSH_KEY_ONLY=off  не трогать вход по паролю, даже когда ключ уже лежит в authorized_keys
 #   DRY_RUN=1, ROOT_PREFIX   режим подготовки файлов без системных изменений
+#   DOMAIN_CHECK=off  не проверять, что домен резолвится (для офлайна и автотестов)
 #
-set -euo pipefail
+set -Eeuo pipefail
+
+# set -e без подсказки опасен: скрипт просто молча умирает на середине, а владелец видит
+# только оборванный вывод. Печатаем, на чём именно всё остановилось.
+trap 'st=$?; printf "\n   установка прервана (код %s): не прошла команда\n     %s\n   строка %s файла %s\n" "$st" "$BASH_COMMAND" "$LINENO" "${BASH_SOURCE[0]}"; exit "$st"' ERR
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DRY_RUN="${DRY_RUN:-0}"
@@ -51,6 +56,8 @@ STAFF_PORT_ENV="${STAFF_PORT:-3001}"
 APT="apt-get -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
 export DEBIAN_FRONTEND=noninteractive
 
+HOST_IP_HINT="$(hostname -I 2>/dev/null | awk '{print $1}')"
+HOST_IP_HINT="${HOST_IP_HINT:-IP-адрес_сервера}"
 TARGET_DIR="$ROOT_PREFIX$APP_DIR"
 
 log() { printf '\n== %s\n' "$*"; }
@@ -63,6 +70,47 @@ sys() {
   fi
 }
 p() { printf '%s%s' "$ROOT_PREFIX" "$1"; }   # путь с префиксом: в dry-run всё уходит в /tmp
+
+# --- 0. Проверка DOMAIN/ADMIN_EMAIL ----------------------------------------
+# Домен нужно сначала купить и прописать A-запись; строки-заглушки из инструкций
+# (DOMAIN=ваш-домен.ru) раньше попадали в .env и ломали ссылки и QR-коды.
+DOMAIN_CHECK="${DOMAIN_CHECK:-dns}"
+if [ -n "$DOMAIN" ]; then
+  case "$DOMAIN" in
+    *[!A-Za-z0-9.-]*)
+      echo "DOMAIN=$DOMAIN - так домены не пишутся: только латиница, цифры, дефис и точки."
+      echo "Домен нужно сначала купить у регистратора (reg.ru, timeweb, 2domains) - в этом нет нужды для доступа студентов,"
+      echo "запустите скрипт без DOMAIN, и сайт будет работать по IP."
+      exit 1 ;;
+  esac
+  if ! [[ "$DOMAIN" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then
+    echo "DOMAIN=$DOMAIN - не похоже на домен (нужно вида feedback.example.ru)."
+    echo "Если домен ещё не куплен, запустите скрипт без DOMAIN: сайт будет доступен по IP-адресу."
+    exit 1
+  fi
+  email_ok=1
+  if [ -n "${ADMIN_EMAIL:-}" ]; then
+    case "$ADMIN_EMAIL" in
+      *[!A-Za-z0-9._%+-@]*) email_ok=0 ;;                     # только латиница: так требует Let's Encrypt
+    esac
+    [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[A-Za-z]{2,}$ ]] || email_ok=0
+    if [ "$email_ok" != "1" ]; then
+      echo "ADMIN_EMAIL=$ADMIN_EMAIL - для Let's Encrypt нужен настоящий адрес на латинице (на него приходят напоминания о сертификате)."
+      echo "Оставьте ADMIN_EMAIL пустым: тогда скрипт не тронет сертификат, а остальное настроит."
+      exit 1
+    fi
+  fi
+  if [ "$DOMAIN_CHECK" != "off" ]; then
+    resolved="$(getent ahostsv4 "$DOMAIN" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ' || true)"
+    if [ -z "${resolved// /}" ]; then
+      echo "Домен $DOMAIN не находится в DNS - A-запись ещё не прописана (или не прошла)."
+      echo "Пропишите у регистратора A-запись на $HOST_IP_HINT, затем повторите: DOMAIN=$DOMAIN bash deploy/vps-setup.sh"
+      echo "Сертификат без домена не нужен: запустите скрипт без DOMAIN - сайт будет работать по IP."
+      exit 1
+    fi
+    echo "   домен $DOMAIN резолвится в: $resolved"
+  fi
+fi
 
 if [ "$(id -u)" != "0" ] && [ "$DRY_RUN" != "1" ]; then
   echo "Нужны права root: bash deploy/vps-setup.sh от root или sudo -s."
@@ -111,7 +159,9 @@ if [ "$PUBLISH_PANELS" = "1" ]; then
   sys ufw --force allow "${PUBLISH_PANELS_PORT}/tcp"
 else
   # публиковали раньше - при обычном запуске закрываем обратно
-  sys ufw --force delete "${PUBLISH_PANELS_PORT}/tcp" || true
+  if ufw status 2>/dev/null | grep -qE "^${PUBLISH_PANELS_PORT}(/tcp)? +ALLOW IN"; then
+    sys ufw delete allow "${PUBLISH_PANELS_PORT}/tcp"
+  fi
 fi
 sys ufw --force enable
 sys ufw status verbose
@@ -240,7 +290,13 @@ set_env PORT "$PUBLIC_PORT_ENV"
 set_env STAFF_PORT "$STAFF_PORT_ENV"
 set_env TRUST_PROXY_HOPS 1
 set_env PUBLIC_BASE_URL "$SCHEME://$BASE_HOST"
-set_env ALLOWED_HOSTS "$BASE_HOST"
+if [ -z "$DOMAIN" ]; then
+  set_env ALLOWED_HOSTS "$BASE_HOST"
+else
+  ip_host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  set_env ALLOWED_HOSTS "$BASE_HOST${ip_host:+,$ip_host}"
+  note "ALLOWED_HOSTS=$BASE_HOST и $ip_host - сайт отвечает и по домену, и по IP (пока DNS распространяется)"
+fi
 set_env COOKIE_SECURE "$([ "$SCHEME" = https ] && echo true || echo false)"
 # секрет оставляем, если он уже был: иначе при повторном запуске у всех слетят сессии
 jwt_current="$(sed -n 's/^JWT_SECRET=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r')"
@@ -286,7 +342,7 @@ else
   if [ "$SKIP_TESTS" = "1" ]; then
     TESTS_RESULT="пропущены (SKIP_TESTS=1)"
   elif npm test >/tmp/feedback-tests.log 2>&1; then
-    TESTS_RESULT="$(grep -aoE '(tests|pass|fail) [0-9]+' /tmp/feedback-tests.log | tr '\n' ' ')"
+    TESTS_RESULT="$(grep -aoE '(tests|pass|fail) [0-9]+' /tmp/feedback-tests.log | tr '\n' ' ' || true)"
     TESTS_RESULT="${TESTS_RESULT:-см. /tmp/feedback-tests.log}"
   else
     TESTS_RESULT="НЕ ПРОШЛИ - подробности выше и в /tmp/feedback-tests.log"
@@ -412,8 +468,10 @@ app_state="пропущено (dry-run)"
 if [ "$DRY_RUN" != "1" ]; then
   health=000
   for attempt in 1 2 3 4 5 6; do
-    health="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://127.0.0.1:${PUBLIC_PORT_ENV}/healthz" 2>/dev/null)"
-    [ "$health" = "200" ] && break
+    # || true обязателен: при set -e refused connection (код 7) убивал скрипт до итога
+    health="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://127.0.0.1:${PUBLIC_PORT_ENV}/healthz" 2>/dev/null || true)"
+    health="${health:-000}"
+    if [ "$health" = "200" ]; then break; fi
     sleep 2
   done
   if [ "$health" = "200" ]; then

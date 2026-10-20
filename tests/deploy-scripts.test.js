@@ -51,7 +51,7 @@ test('синтаксис shell-скриптов (bash -n)', { skip: haveBash ? f
 
 test('vps-setup.sh не задаёт вопросов и ничего не перетирает', () => {
   const s = read(SETUP);
-  assert.match(s, /set -euo pipefail/);
+  assert.match(s, /set -E?euo pipefail/);
   assert.match(s, /DEBIAN_FRONTEND=noninteractive/);
   // тот самый фиолетовый экран про sshd_config: ответы берутся из существующего конфига
   assert.match(s, /--force-confdef/);
@@ -210,12 +210,56 @@ test('публикация панелей - по явному флагу, по �
   assert.match(s, /PUBLISH_PANELS="\$\{PUBLISH_PANELS:-0\}"/, 'по умолчанию панели не публикуются');
   assert.match(s, /PUBLISH_PANELS_PORT="\$\{PUBLISH_PANELS_PORT:-8080\}"/);
   assert.match(s, /sys ufw --force allow "\$\{PUBLISH_PANELS_PORT\}\/tcp"/);
-  assert.match(s, /sys ufw --force delete "\$\{PUBLISH_PANELS_PORT\}\/tcp" \|\| true/, 'запуск без флага закрывает порт обратно');
+  assert.match(s, /sys ufw delete allow "\$\{PUBLISH_PANELS_PORT\}\/tcp"/, 'запуск без флага закрывает порт обратно');
   assert.match(s, /listen \[::\]:\$\{PUBLISH_PANELS_PORT\};/, 'nginx слушает порт публикации');
   assert.ok(!/ufw allow \$\{PUBLISH_PANELS_PORT\}/.test(s.replace(/--force /g, '')), 'правило ставится только внутри ветки флага');
   const readme = read(path.join(ROOT, 'README.md'));
   assert.match(readme, /PUBLISH_PANELS=1/);
   assert.match(readme, /пароль идёт открытым текстом|пароль в сети читается/, 'о риске должно быть написано рядом');
+});
+
+test('DOMAIN из инструкции (заглушка) не попадает в .env', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, (t) => {
+  // владелец скопировал строку шаблона буквально: DOMAIN=ваш-домен.ru - и ссылки с QR-кодами
+  // указывали в несуществующий домен. Скрипт обязан остановиться до любых изменений.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'feedback-domain-'));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const runSetup = (env) => spawnSync('bash', [SETUP], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, DRY_RUN: '1', ROOT_PREFIX: path.join(tmp, 'r' + Math.random().toString(36).slice(2)), ...env },
+  });
+
+  const cyrillic = runSetup({ DOMAIN: 'ваш-домен.ru' });
+  assert.equal(cyrillic.status, 1, cyrillic.stdout);
+  assert.match(cyrillic.stdout, /так домены не пишутся/);
+  assert.match(cyrillic.stdout, /запустите скрипт без DOMAIN/);
+
+  const noDot = runSetup({ DOMAIN: 'localhost' });
+  assert.equal(noDot.status, 1, noDot.stdout);
+  assert.match(noDot.stdout, /не похоже на домен/);
+
+  const badEmail = runSetup({ DOMAIN: 'feedback.example.ru', ADMIN_EMAIL: 'ваша@почта.ru', DOMAIN_CHECK: 'off' });
+  assert.equal(badEmail.status, 1, badEmail.stdout);
+  assert.match(badEmail.stdout, /нужен настоящий адрес на латинице/);
+
+  // NXDOMAIN: домен существует только в планах владельца
+  const noDns = runSetup({ DOMAIN: 'bogusa-feedback-42.invalid' });
+  assert.equal(noDns.status, 1, noDns.stdout);
+  assert.match(noDns.stdout, /не находится в DNS/);
+
+  // проверка работает до mkdir и до любых записей: на диске не должно появиться ничего
+  assert.deepEqual(fs.readdirSync(tmp), [], 'проверка домена обязана быть до первой записи на диск');
+});
+
+test('ошибка внутри скрипта печатается, а не обрывает вывод молча', () => {
+  const s = read(SETUP);
+  assert.match(s, /set -Eeuo pipefail/, '-E нужен, чтобы trap ERR работал внутри функций');
+  assert.match(s, /trap .*ERR$/m, 'без trap установка обрывалась на середине и выглядела как "Готово"');
+  assert.match(s, /health="\$\(curl [^)]*\|\| true\)"/, 'отказ curl (connection refused) не должен убивать скрипт');
+  assert.match(s, /health="\$\(curl[\s\S]{0,160}\|\| true\)"/);
+  assert.match(s, /TESTS_RESULT="\$\(grep[\s\S]{0,160}\|\| true\)"/, 'тот же ловуш pipefail в отчёте по тестам');
+  assert.match(s, /if \[ "\$health" = "200" \]; then break; fi/);
+  assert.match(s, /ufw status 2>\/dev\/null \| grep -qE "\^\$\{PUBLISH_PANELS_PORT\}/, 'перед delete проверяем наличие правила');
 });
 
 test('смена пароля администратора доступна командой npm', () => {
@@ -236,14 +280,14 @@ test('DRY_RUN реально готовит .env, unit-файл и конфиг 
   const res = spawnSync('bash', [SETUP], {
     cwd: ROOT,
     encoding: 'utf8',
-    env: { ...process.env, DRY_RUN: '1', ROOT_PREFIX: tmp, APP_DIR: ROOT, DOMAIN: 'feedback.example.ru', ADMIN_EMAIL: 'me@example.ru' },
+    env: { ...process.env, DRY_RUN: '1', ROOT_PREFIX: tmp, APP_DIR: ROOT, DOMAIN: 'feedback.example.ru', ADMIN_EMAIL: 'me@example.ru', DOMAIN_CHECK: 'off' },
   });
   assert.equal(res.status, 0, `dry-run упал: ${res.stdout}\n${res.stderr}`);
 
   const env = read(path.join(tmp, ROOT, '.env'));
   assert.match(env, /^NODE_ENV=production$/m);
   assert.match(env, /^PUBLIC_BASE_URL=https:\/\/feedback\.example\.ru$/m);
-  assert.match(env, /^ALLOWED_HOSTS=feedback\.example\.ru$/m);
+  assert.match(env, /^ALLOWED_HOSTS=feedback\.example\.ru(,[0-9.]+)?$/m, 'домен плюс IP: доступ не теряется, пока DNS распространяется');
   assert.match(env, /^COOKIE_SECURE=true$/m, 'с доменом куки становятся Secure');
   assert.match(env, /^ADMIN_LOGIN=admin$/m);
   assert.doesNotMatch(env, /^ADMIN_PASSWORD=\s*$/m, 'пароль администратора обязан быть задан');
@@ -270,7 +314,7 @@ test('DRY_RUN реально готовит .env, unit-файл и конфиг 
   const again = spawnSync('bash', [SETUP], {
     cwd: ROOT,
     encoding: 'utf8',
-    env: { ...process.env, DRY_RUN: '1', ROOT_PREFIX: tmp, APP_DIR: ROOT, DOMAIN: 'feedback.example.ru' },
+    env: { ...process.env, DRY_RUN: '1', ROOT_PREFIX: tmp, APP_DIR: ROOT, DOMAIN: 'feedback.example.ru', DOMAIN_CHECK: 'off' },
   });
   assert.equal(again.status, 0);
   assert.equal(read(path.join(tmp, ROOT, '.env')), before, 'второй запуск перебивает .env');
