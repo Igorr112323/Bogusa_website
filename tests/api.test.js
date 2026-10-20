@@ -883,3 +883,54 @@ test('счётчик новых ответов: отметка просмотр�
   assert.ok(onlyNew.json.comments.length >= 1);
   assert.ok(onlyNew.json.comments.every((c) => c.is_new), 'фильтр только новые отдаёт исключительно новые');
 });
+
+test('сессии преподавателя и администратора живут в одном браузере одновременно', async () => {
+  // браузер хранит cookie по адресу и не разделяет порты - вход в админку раньше
+  // затирал сессию преподавателя; теперь cookie различаются по ролям
+  const admin = staffClient();
+  const adminLogin = await admin.post('/api/auth/login', { login: 'admin', password: 'Admin#2026pass' });
+  assert.equal(adminLogin.status, 200);
+  assert.match(adminLogin.headers.get('set-cookie') || '', /bf_token_admin=/);
+
+  const created = await admin.post('/api/admin/teachers', {
+    login: 'sovmestno',
+    full_name: 'Совместный Тест Тестович',
+  });
+  assert.equal(created.status, 201);
+
+  const t = staffClient();
+  const tLogin = await t.post('/api/auth/login', { login: 'sovmestno', password: created.json.password });
+  assert.equal(tLogin.status, 200);
+  assert.match(tLogin.headers.get('set-cookie') || '', /bf_token_teacher=/);
+
+  // первое правило для нового преподавателя - смена временного пароля
+  const changed = await t.post('/api/auth/password', {
+    current_password: created.json.password,
+    new_password: 'Sovmestno#2026pass',
+  });
+  assert.equal(changed.status, 200);
+
+  // обе cookie в одном клиенте - ровно как один браузер с двумя вкладками
+  const both = staffClient();
+  const cookieHeader = [admin.cookie, t.cookie].join('; ');
+
+  const meTeacher = await both.get('/api/auth/me', { Cookie: cookieHeader, 'X-Panel': 'teacher' });
+  assert.equal(meTeacher.status, 200);
+  assert.equal(meTeacher.json.user.login, 'sovmestno');
+  const meAdmin = await both.get('/api/auth/me', { Cookie: cookieHeader, 'X-Panel': 'admin' });
+  assert.equal(meAdmin.status, 200);
+  assert.equal(meAdmin.json.user.login, 'admin');
+
+  // каждая панель работает со своей учёткой, права не смешиваются
+  const teacherView = await both.get('/api/teacher/overview', { Cookie: cookieHeader, 'X-Panel': 'teacher' });
+  assert.equal(teacherView.status, 200);
+  const adminView = await both.get('/api/admin/overview', { Cookie: cookieHeader, 'X-Panel': 'admin' });
+  assert.equal(adminView.status, 200);
+
+  // выход из админки не выкидывает преподавателя
+  const out = await both.post('/api/auth/logout', undefined, { Cookie: cookieHeader, 'X-Panel': 'admin' });
+  assert.equal(out.status, 200);
+  const cleared = out.headers.getSetCookie ? out.headers.getSetCookie() : [];
+  assert.ok(cleared.some((c) => c.startsWith('bf_token_admin=')), 'сессия администратора закрыта');
+  assert.ok(!cleared.some((c) => c.startsWith('bf_token_teacher=')), 'сессия преподавателя остаётся');
+});

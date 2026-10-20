@@ -238,6 +238,7 @@ test('публикация панелей - по явному флагу, по �
   assert.match(s, /location \^~ \/portal \{ return 404; \}/, 'на порту админки кабинета преподавателя быть не должно');
   assert.match(s, /location = \/ \{ return 302 \/portal\/; \}/, 'корень порта преподавателя ведёт в кабинет');
   assert.match(s, /location = \/ \{ return 302 \/admin\/; \}/, 'корень админского порта ведёт в админку');
+  assert.match(s, /proxy_set_header X-Panel \$\{panel_role\};/, 'nginx сообщает приложению, с какой панели запрос');
   assert.match(s, /error_page 404 \/404\.html;/, 'закрытая дверь должна показывать нашу страницу, а не голый nginx');
   assert.match(s, /location = \/404\.html \{ root \$\{APP_DIR\}\/public; internal; \}/);
   assert.equal(s.split('proxy_pass http://127.0.0.1:${STAFF_PORT_ENV};').length - 1, 2, 'публичных блоков на staff-порт ровно два');

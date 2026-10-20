@@ -59,23 +59,59 @@ function cookieOptions(maxAgeMs) {
   return opts;
 }
 
-function setAuthCookie(res, token, ttlMs) {
-  res.cookie(config.COOKIE_NAME, token, cookieOptions(ttlMs));
+/**
+ * Имена cookie зависят от роли. Браузер хранит cookie по адресу и не разделяет
+ * порты, поэтому одна общая cookie затирала бы вторую сессию: вход в админку
+ * выкидывал преподавателя и наоборот. Теперь сессии двух учёток уживаются.
+ */
+const COOKIE_BY_ROLE = {
+  teacher: `${config.COOKIE_NAME}_teacher`,
+  admin: `${config.COOKIE_NAME}_admin`,
+};
+
+function cookieNameFor(role) {
+  return COOKIE_BY_ROLE[role] || config.COOKIE_NAME;
 }
 
-function clearAuthCookie(res) {
-  res.clearCookie(config.COOKIE_NAME, cookieOptions());
+/** Панель, из которой пришёл запрос: заголовок X-Panel ставит nginx на своём порту. */
+function panelOf(req) {
+  const value = String((req.headers && req.headers['x-panel']) || '').toLowerCase();
+  return value === 'teacher' || value === 'admin' ? value : null;
+}
+
+function setAuthCookie(res, role, token, ttlMs) {
+  res.cookie(cookieNameFor(role), token, cookieOptions(ttlMs));
+}
+
+function clearAuthCookie(res, role) {
+  const names = new Set([config.COOKIE_NAME]);
+  if (role && COOKIE_BY_ROLE[role]) {
+    names.add(COOKIE_BY_ROLE[role]);
+  } else {
+    Object.values(COOKIE_BY_ROLE).forEach((name) => names.add(name));
+  }
+  for (const name of names) res.clearCookie(name, cookieOptions());
 }
 
 /**
- * Все возможные токены запроса: сначала httpOnly-cookie, затем заголовок Bearer.
- * Порядок важен: cookie — основной механизм, Bearer используется клиентами панелей
- * (например, когда браузер блокирует сторонние cookie внутри iframe).
+ * Все возможные токены запроса в порядке предпочтения: cookie своей панели,
+ * cookie второй панели, прежнее имя cookie, затем заголовок Bearer (клиенты
+ * панелей в iframe, где браузер блокирует cookie).
  */
 function extractTokens(req) {
   const tokens = [];
-  const cookieToken = req.cookies ? req.cookies[config.COOKIE_NAME] : null;
-  if (cookieToken) tokens.push(cookieToken);
+  const cookies = req.cookies || {};
+  const names = [];
+  const panel = panelOf(req);
+  if (panel) names.push(COOKIE_BY_ROLE[panel]);
+  for (const name of Object.values(COOKIE_BY_ROLE)) {
+    if (!names.includes(name)) names.push(name);
+  }
+  names.push(config.COOKIE_NAME);
+  for (const name of names) {
+    const value = cookies[name];
+    if (value && !tokens.includes(value)) tokens.push(value);
+  }
   const header = req.headers.authorization || '';
   if (header.startsWith('Bearer ')) {
     const value = header.slice(7).trim();
@@ -84,19 +120,23 @@ function extractTokens(req) {
   return tokens;
 }
 
-/** Первый валидный токен запроса или null. */
-function extractToken(req) {
-  const tokens = extractTokens(req);
-  if (tokens.length === 0) return null;
-  for (const token of tokens) {
+/** Все валидные токены запроса с их payload в порядке предпочтения. */
+function extractSessions(req) {
+  const sessions = [];
+  for (const token of extractTokens(req)) {
     try {
-      const payload = verifyToken(token);
-      return { token, payload };
+      sessions.push({ token, payload: verifyToken(token) });
     } catch {
       /* пробуем следующий токен */
     }
   }
-  return null;
+  return sessions;
+}
+
+/** Первый валидный токен запроса или null. */
+function extractToken(req) {
+  const sessions = extractSessions(req);
+  return sessions.length > 0 ? sessions[0] : null;
 }
 
 function loadUserById(id) {
@@ -112,20 +152,28 @@ function loadUserById(id) {
  * иначе запрос продолжается анонимным (для публичных эндпоинтов).
  */
 function attachUser(req, _res, next) {
-  req.user = null;
-  const found = extractToken(req);
-  if (found) {
-    const user = loadUserById(found.payload.sub);
-    if (user && user.is_active && Number(user.token_version) === Number(found.payload.tv)) {
-      req.user = {
+  // req.users — все живые сессии запроса (например, преподаватель и админ в одном
+  // браузере); req.user — «своя» учётка для этой панели или просто первая.
+  req.users = [];
+  for (const session of extractSessions(req)) {
+    const user = loadUserById(session.payload.sub);
+    if (user && user.is_active && Number(user.token_version) === Number(session.payload.tv)) {
+      const pub = {
         id: user.id,
         login: user.login,
         full_name: user.full_name,
         role: user.role,
         must_change_password: !!user.must_change_password,
       };
+      if (!req.users.some((u) => u.id === pub.id)) req.users.push(pub);
     }
   }
+  const panel = panelOf(req);
+  if (panel) {
+    const own = req.users.find((u) => u.role === panel);
+    if (own) req.users = [own, ...req.users.filter((u) => u.id !== own.id)];
+  }
+  req.user = req.users[0] || null;
   return next();
 }
 
@@ -136,10 +184,15 @@ function requireAuth(req, _res, next) {
 
 function requireRole(...roles) {
   return (req, _res, next) => {
-    if (!req.user) return next(new ApiError(401, 'Требуется вход в систему'));
-    if (!roles.includes(req.user.role)) {
+    // Среди сессий запроса ищем учётку с подходящей ролью: админ в админке
+    // остаётся админом, даже когда в этом же браузере открыт кабинет преподавателя.
+    const users = req.users || (req.user ? [req.user] : []);
+    const match = users.find((u) => roles.includes(u.role));
+    if (!match) {
+      if (users.length === 0) return next(new ApiError(401, 'Требуется вход в систему'));
       return next(new ApiError(403, 'Недостаточно прав для этого действия'));
     }
+    req.user = match;
     return next();
   };
 }

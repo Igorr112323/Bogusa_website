@@ -67,7 +67,7 @@ router.post('/login', loginGuard, async (req, res, next) => {
     const token = signToken(user);
     const decoded = jwt.decode(token);
     const ttlMs = decoded && decoded.exp ? decoded.exp * 1000 - Date.now() : 8 * 60 * 60 * 1000;
-    setAuthCookie(res, token, ttlMs);
+    setAuthCookie(res, user.role, token, ttlMs);
 
     req.user = publicUser(user);
     logAudit(req, 'auth.login', { entity: 'user', entityId: user.id });
@@ -86,7 +86,8 @@ router.post('/login', loginGuard, async (req, res, next) => {
 });
 
 router.post('/logout', (req, res) => {
-  clearAuthCookie(res);
+  // выходим только из своей учётки: вторая панель в этом браузере остаётся внутри
+  clearAuthCookie(res, req.user && req.user.role);
   res.json({ ok: true });
 });
 
@@ -126,7 +127,7 @@ router.post('/password', requireAuth, async (req, res, next) => {
     // Продлеваем текущую сессию новым токеном, остальные становятся недействительными.
     const fresh = get('SELECT * FROM users WHERE id = ?', user.id);
     const token = signToken(fresh);
-    setAuthCookie(res, token, 8 * 60 * 60 * 1000);
+    setAuthCookie(res, fresh.role, token, 8 * 60 * 60 * 1000);
 
     logAudit(req, 'auth.password_changed', { entity: 'user', entityId: user.id });
 

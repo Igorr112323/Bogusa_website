@@ -455,6 +455,7 @@ mkdir -p "$(dirname "$nginx_conf")" "$(p /etc/nginx/sites-enabled)"
       echo "        proxy_set_header X-Real-IP \$remote_addr;"
       echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
       echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
+      echo "        proxy_set_header X-Panel ${panel_role};   # приложение знает, с какой панели запрос"
       echo "    }"
       echo "}"
     done
