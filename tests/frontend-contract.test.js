@@ -120,6 +120,13 @@ process.env.DB_FILE = path.join(tempDir, 'contract.sqlite');
 process.env.JWT_SECRET = 'contract-secret-contract-secret-1234';
 process.env.ADMIN_PASSWORD = 'Admin#2026pass';
 process.env.ANTI_BOT_MIN_FILL_MS = '0';
+// политику встраивания тесты задают сами: значение из .env разработчика
+// (например self) не должно менять ожидаемый заголовок Content-Security-Policy
+process.env.FRAME_ANCESTORS = '*';
+// боевой адрес из .env (PUBLIC_BASE_URL) не должен уводить ссылки: тесты проверяют
+// порт из process.env.PORT, поэтому переменную обнуляем
+process.env.PUBLIC_BASE_URL = '';
+process.env.ALLOWED_HOSTS = '';
 
 const createApp = require('../server/app');
 const { ensureAdminAccount, seedDemoStructure, seedDemoResponses } = require('../server/seed');

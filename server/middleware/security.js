@@ -14,12 +14,38 @@
 const helmet = require('helmet');
 const config = require('../config');
 
+/**
+ * Кавычки в значениях CSP. И dotenv, и EnvironmentFile у systemd снимают одинарные
+ * кавычки, а helmet требует `'self'` именно с кавычками: из-за строки
+ * `FRAME_ANCESTORS='self'` в .env приложение падало ещё до прослушивания порта.
+ * Поэтому ключевые слова дописываем здесь - в .env можно писать и `self`, и `'self'`.
+ */
+const CSP_KEYWORDS = new Set([
+  'none', 'self', 'unsafe-inline', 'unsafe-eval', 'unsafe-allow-redirects',
+  'strict-dynamic', 'report-sample', 'wasm-unsafe-eval', 'no-eval', 'none-allow-scripts',
+]);
+
+function normalizeSource(token) {
+  const value = String(token).trim().replace(/^["']|["']$/g, '').trim();
+  if (!value) return null;
+  if (value === '*') return '*';
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:$/.test(value)) return value;          // data:, https:, blob:
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:\/\/\S+$/.test(value)) return value; // https://lms.university.ru
+  if (CSP_KEYWORDS.has(value)) return `'${value}'`;
+  return value;
+}
+
+/** @returns {string[]} список источников для директивы CSP */
+function normalizeCspList(value) {
+  return String(value == null ? '' : value)
+    .split(/[\s,]+/)
+    .map(normalizeSource)
+    .filter(Boolean);
+}
+
 function frameAncestorsFor(scope) {
   if (scope === 'staff') return ["'none'"];
-  const list = String(config.FRAME_ANCESTORS)
-    .split(/[\s,]+/)
-    .map((value) => value.trim())
-    .filter(Boolean);
+  const list = normalizeCspList(config.FRAME_ANCESTORS);
   return list.length > 0 ? list : ["'self'"];
 }
 
@@ -77,4 +103,4 @@ function extraHeaders(scope) {
   };
 }
 
-module.exports = { securityMiddleware, extraHeaders };
+module.exports = { securityMiddleware, extraHeaders, normalizeCspList, frameAncestorsFor };

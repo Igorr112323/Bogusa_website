@@ -120,8 +120,19 @@ findtime = 10m
 EOF
 sys systemctl enable --now fail2ban
 sys systemctl restart fail2ban
-if ! sys fail2ban-client status sshd; then
-  note "внимание: sshd jail не отвечает - проверьте: systemctl status fail2ban"
+if [ "$DRY_RUN" = "1" ]; then
+  note "(dry-run) fail2ban-client status sshd"
+else
+  jail_ok=0
+  for attempt in 1 2 3 4 5; do
+    if fail2ban-client status sshd >/dev/null 2>&1; then jail_ok=1; break; fi
+    sleep 2   # сокет появляется на секунду позже, чем systemd считает службу запущенной
+  done
+  if [ "$jail_ok" = "1" ]; then
+    note "jail sshd активен: $(fail2ban-client status sshd 2>/dev/null | tr '\n' ' ' | tr -s ' ')"
+  else
+    note "внимание: sshd jail не отвечает - проверьте: systemctl status fail2ban --no-pager"
+  fi
 fi
 
 # --- 5. SSH: вход по ключу, пароль не нужен ---------------------------------
@@ -236,7 +247,12 @@ if grep -q '^DEMO_TEACHER_PASSWORD=' "$ENV_FILE"; then
   note "DEMO_TEACHER_PASSWORD закомментирован: seed сгенерирует свой и напечатает его один раз"
 fi
 set_env MIN_ANSWERS_TO_SHOW "${MIN_ANSWERS_TO_SHOW:-5}"
-set_env FRAME_ANCESTORS "${FRAME_ANCESTORS:-'self'}"
+# FRAME_ANCESTORS не трогаем без запроса: значение берётся из .env.example, а кавычки
+# для CSP приложение подставляет само (запись self и 'self' работают одинаково)
+if [ -n "${FRAME_ANCESTORS:-}" ]; then
+  set_env FRAME_ANCESTORS "$FRAME_ANCESTORS"
+  note "FRAME_ANCESTORS=$FRAME_ANCESTORS (встраивание анкеты ограничено)"
+fi
 set_env DATA_DIR "$APP_DIR/data"
 set_env DB_FILE "$APP_DIR/data/feedback.sqlite"
 note "PUBLIC_BASE_URL=$SCHEME://$BASE_HOST, логин админа: admin"
@@ -261,8 +277,8 @@ else
     TESTS_RESULT="$(grep -aoE '(tests|pass|fail) [0-9]+' /tmp/feedback-tests.log | tr '\n' ' ')"
     TESTS_RESULT="${TESTS_RESULT:-см. /tmp/feedback-tests.log}"
   else
-    TESTS_RESULT="НЕ ПРОШЛИ - последние строки /tmp/feedback-tests.log:"
-    tail -n 12 /tmp/feedback-tests.log | sed 's/^/   /'
+    TESTS_RESULT="НЕ ПРОШЛИ - подробности выше и в /tmp/feedback-tests.log"
+    grep -aE "not ok|error: |# (tests|pass|fail) " /tmp/feedback-tests.log | head -n 10 | sed 's/^/   /'
   fi
 fi
 
@@ -352,6 +368,26 @@ else
   note "(dry-run) nginx -t && systemctl reload nginx"
 fi
 
+# Ответ приложения: без этого "Готово" ничего не значит (сервис мог упасть на старте)
+app_state="пропущено (dry-run)"
+if [ "$DRY_RUN" != "1" ]; then
+  health=000
+  for attempt in 1 2 3 4 5 6; do
+    health="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "http://127.0.0.1:${PUBLIC_PORT_ENV}/healthz" 2>/dev/null)"
+    [ "$health" = "200" ] && break
+    sleep 2
+  done
+  if [ "$health" = "200" ]; then
+    app_state="отвечает (код 200, проверка $attempt попытки)"
+  else
+    app_state="НЕ отвечает (код ${health:-000}) - последние строки журнала службы:"
+    echo
+    printf '%s\n' "$app_state"
+    journalctl -u feedback -n 25 --no-pager 2>/dev/null | tail -n 25 | sed 's/^/   /'
+    app_state="НЕ отвечает - код ${health:-000}, смотри журнал выше"
+  fi
+fi
+
 # Let's Encrypt - только когда есть домен и почта
 certbot_state="пропущен (домен не задан: сертификат выдаётся только на домен)"
 if [ -n "$DOMAIN" ] && [ "$DRY_RUN" != "1" ]; then
@@ -398,6 +434,7 @@ fi
 echo "  Анкета:           $SCHEME://$BASE_HOST/form.html"
 echo "  Проверка:         systemctl status feedback --no-pager"
 echo "  Логи:             journalctl -u feedback -n 50 --no-pager"
+echo "  Приложение:       $app_state"
 echo "  Автотесты:        $TESTS_RESULT"
 echo "  Let's Encrypt:    $certbot_state"
 echo "  Вход и панели:"

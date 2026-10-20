@@ -28,6 +28,13 @@ process.env.LOGIN_MAX_ATTEMPTS = '0'; // пауза после неверных 
 process.env.RATE_LIMIT_SUBMIT = '100000';
 process.env.MIN_ANSWERS_TO_SHOW = '1';
 process.env.NODE_ENV = 'test';
+// политику встраивания тесты задают сами: значение из .env разработчика
+// (например self) не должно менять ожидаемый заголовок Content-Security-Policy
+process.env.FRAME_ANCESTORS = '*';
+// боевой адрес из .env (PUBLIC_BASE_URL) не должен уводить ссылки: тесты проверяют
+// порт из process.env.PORT, поэтому переменную обнуляем
+process.env.PUBLIC_BASE_URL = '';
+process.env.ALLOWED_HOSTS = '';
 process.env.PORT = '39000';
 process.env.STAFF_PORT = '39001';
 

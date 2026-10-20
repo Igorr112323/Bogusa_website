@@ -121,6 +121,7 @@ npm run reset    # ПОЛНЫЙ СБРОС: удалить файл БД и со
 npm run qr       # напечатать QR-код со ссылкой на анкету в терминале
 npm run doctor   # проверить окружение: Node.js, драйвер БД, порт, состояние базы
 npm run dbcheck  # отдельно проверить базу данных (запись, чтение, транзакции)
+npm run setadminpass -- 'Новый пароль'   # сменить пароль администратора, если прежний засветился
 npm run secaudit # локальная проверка безопасности своего развёртывания (отчёт в терминале)
 npm run help     # шпаргалка по всем командам
 ```
@@ -373,7 +374,9 @@ cd $new.FullName
 ```
 
 По умолчанию встраивание разрешено с любого источника (`FRAME_ANCESTORS=*`). Чтобы ограничить,
-укажите домены: `FRAME_ANCESTORS='self' https://lms.university.ru`.
+укажите домены: `FRAME_ANCESTORS=self https://lms.university.ru`. Кавычки вокруг `self` писать
+не нужно: и `.env`, и `EnvironmentFile` у systemd их снимают, а приложение подставляет `'self'`
+в заголовок `Content-Security-Policy` само (написанное с кавычками тоже принимается).
 
 > Если сайт работает по HTTPS, ссылка в QR-коде должна начинаться с `https://` — задайте
 > `PUBLIC_BASE_URL=https://feedback.example.ru` в `.env`, иначе в QR попадёт адрес локальной машины.
@@ -482,7 +485,7 @@ ADMIN_LOGIN=admin
 ADMIN_PASSWORD=<надёжный пароль>
 SHOW_TEACHER_NAME=true
 MIN_ANSWERS_TO_SHOW=3
-FRAME_ANCESTORS='self' https://lms.university.ru
+FRAME_ANCESTORS=self https://lms.university.ru
 ```
 
 ---
@@ -626,7 +629,7 @@ CORS, подстановку `Host`, открытые редиректы, уте
 
 1. Задать `JWT_SECRET` (≥ 32 символов) и сменить пароль администратора.
 2. Включить HTTPS и `COOKIE_SECURE=true`.
-3. Ограничить `FRAME_ANCESTORS` вашими доменами, если встраивание не нужно.
+3. Ограничить `FRAME_ANCESTORS` вашими доменами, если встраивание не нужно (`FRAME_ANCESTORS=self https://lms.university.ru`).
 4. Настроить резервное копирование файла `data/feedback.sqlite` (например, `sqlite3 ... ".backup"`).
 
 ---
@@ -802,6 +805,10 @@ bash deploy/vps-status.sh        # только читает: что готов�
 
 Полезно после обрыва: если закрылось окно SSH и установка не дошла до конца, скрипт покажет,
 на каком шаге встало, а `deploy/vps-setup.sh` можно запустить повторно.
+
+seed и `npm run secaudit` выводят пароли в терминал: если вывод сохранился в истории или
+переслан кому-то, смените пароль администратора - `npm run setadminpass -- 'Новый пароль'`
+(прежние сессии при этом завершаются).
 
 Порт `3001` (вход и панели) наружу закрыт - это намеренно. Их смотрят со своего компьютера по
 туннелю: `ssh -L 3001:localhost:3001 root@IP-адрес`, затем в браузере `http://localhost:3001/login`.

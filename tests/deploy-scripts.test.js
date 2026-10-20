@@ -180,6 +180,27 @@ test('vps-status.sh читает .env и не падает без него', { s
   assert.match(empty.stdout, /\.env нет/);
 });
 
+test('vps-setup.sh проверяет, что приложение отвечает, и не навязывает CSP', () => {
+  const s = read(SETUP);
+  assert.match(s, /\/healthz/, 'после запуска службы обязана быть проверка ответа приложения');
+  assert.match(s, /journalctl -u feedback/, 'иначе падение сервиса выглядит как "Готово"');
+  assert.match(s, /if \[ -n "\${FRAME_ANCESTORS:-}" \]/, 'FRAME_ANCESTORS меняется только по запросу');
+  assert.match(s, /for attempt in 1 2 3 4 5; do[\s\S]{0,200}fail2ban-client status sshd/, 'fail2ban: сокет появляется с задержкой');
+  assert.match(s, /grep -aE "not ok\|error: /, 'упавший npm test должен показывать первую ошибку, а не хвост');
+  assert.match(s, /echo "  Приложение:       \$app_state"/);
+});
+
+test('смена пароля администратора доступна командой npm', () => {
+  const pkg = JSON.parse(read(path.join(ROOT, 'package.json')));
+  assert.equal(pkg.scripts.setadminpass, 'node scripts/set-admin-password.js');
+  const script = read(path.join(ROOT, 'scripts', 'set-admin-password.js'));
+  assert.match(script, /token_version = token_version \+ 1/, 'старые токены должны перестать работать');
+  assert.match(script, /must_change_password = 0/);
+  assert.ok(!/readline|prompt\(/.test(script), 'вопросов в скрипте быть не должно');
+  const readme = read(path.join(ROOT, 'README.md'));
+  assert.match(readme, /npm run setadminpass/);
+});
+
 test('DRY_RUN реально готовит .env, unit-файл и конфиг nginx', { skip: haveBash ? false : 'bash недоступен на этой платформе' }, (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'feedback-deploy-'));
   t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -201,6 +222,7 @@ test('DRY_RUN реально готовит .env, unit-файл и конфиг 
   assert.match(env, /^JWT_SECRET=[A-Za-z0-9_-]{40,}$/m);
   assert.match(env, /^#DEMO_TEACHER_PASSWORD=/m, 'демо-пароль из публичного .env.example должен быть выключен');
   assert.match(env, /^DB_FILE=/m);
+  assert.match(env, /^FRAME_ANCESTORS=\*$/m, 'встраивание в LMS - настройка владельца, скрипт её не трогает');
 
   const unit = read(path.join(tmp, 'etc', 'systemd', 'system', 'feedback.service'));
   assert.ok(!unit.includes('__APP_DIR__'), 'подстановка пути не сработала');

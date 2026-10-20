@@ -301,3 +301,35 @@ test('пустые оценки другого типа анкеты остаю�
   assert.equal(cells[12], '');
   assert.equal(cells[18], '');
 });
+
+test('FRAME_ANCESTORS: кавычки не нужны - приложение подставляет их само', () => {
+  const { normalizeCspList } = require('../server/middleware/security');
+  // dotenv и EnvironmentFile у systemd снимают одинарные кавычки: 'self' приходит как self,
+  // а helmet требует кавычки и иначе падает на старте сервиса
+  assert.deepEqual(normalizeCspList("self"), ["'self'"]);
+  assert.deepEqual(normalizeCspList("'self'"), ["'self'"]);
+  assert.deepEqual(normalizeCspList('"self"'), ["'self'"]);
+  assert.deepEqual(normalizeCspList('*'), ['*']);
+  assert.deepEqual(normalizeCspList("self https://lms.university.ru"), ["'self'", 'https://lms.university.ru']);
+  assert.deepEqual(normalizeCspList('self, data:, https:'), ["'self'", 'data:', 'https:']);
+  assert.deepEqual(normalizeCspList(''), []);
+  assert.deepEqual(normalizeCspList(undefined), []);
+
+  // путь, который проходит реальный запрос: студенческий порт берёт список из config,
+  // служебный - всегда 'none', каким бы ни было значение переменной
+  const config = require('../server/config');
+  const { frameAncestorsFor } = require('../server/middleware/security');
+  const saved = config.FRAME_ANCESTORS;
+  try {
+    config.FRAME_ANCESTORS = 'self';
+    assert.deepEqual(frameAncestorsFor('student'), ["'self'"]);
+    config.FRAME_ANCESTORS = "*'";
+    assert.deepEqual(frameAncestorsFor('student'), ['*']);
+    config.FRAME_ANCESTORS = '';
+    assert.deepEqual(frameAncestorsFor('student'), ["'self'"]);
+    config.FRAME_ANCESTORS = 'self';
+    assert.deepEqual(frameAncestorsFor('staff'), ["'none'"]);
+  } finally {
+    config.FRAME_ANCESTORS = saved;
+  }
+});
