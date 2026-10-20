@@ -527,6 +527,31 @@ test('мои темы: массовое добавление, код дисци�
   }
 });
 
+test('мои темы: карточки свёрнуты по умолчанию, свежая дисциплина вверху, подсказки убраны', () => {
+  const portal = read('public/js/portal.js');
+  assert.ok(portal.includes('const expandedCards = new Set()'), 'помнятся только раскрытые карточки, то есть по умолчанию всё свёрнуто');
+  assert.ok(!portal.includes('collapsedCards'), 'обратного состояния (по умолчанию раскрыто) больше нет');
+  assert.match(portal, /\[\.\.\.state\.disciplines\]\.sort\(\(a, b\) => b\.id - a\.id\)/, 'новая дисциплина появляется вверху списка');
+  assert.ok(portal.includes('expandedCards.add(createdId)'), 'созданная дисциплина сразу раскрыта');
+  assert.ok(!portal.includes('localStorage') && !portal.includes('sessionStorage'), 'состояние списка нигде не сохраняется');
+
+  const table = portal.slice(portal.indexOf('function topicsTable'), portal.indexOf('function disciplineCard'));
+  assert.ok(!table.includes("'Ссылка'"), 'кнопка Ссылка из строк таблицы занятий убрана');
+  assert.ok(!table.includes('modalLink'), 'ссылку даёт только карточка дисциплины');
+  assert.ok(!table.includes('Занятий пока нет'), 'подсказка про пустой список занятий убрана');
+  assert.ok(table.includes('return null'), 'без занятий таблица не рисуется');
+  assert.ok(portal.includes("text: 'Ссылка'"), 'ссылка на анкету осталась в шапке дисциплины');
+
+  const form = portal.slice(portal.indexOf('function topicAddForm'), portal.indexOf('function topicsTable'));
+  assert.ok(!form.includes('Enter тоже добавляет'), 'подсказка про Enter убрана');
+  assert.ok(!form.includes('Дату можно не ставить'), 'подсказка про дату убрана');
+  assert.ok(form.includes("el('h3', { text: 'Добавить занятие' })"), 'в блоке добавления остался только заголовок');
+
+  const create = portal.slice(portal.indexOf('function createDisciplineCard'), portal.indexOf('async function afterCatalogChange'));
+  assert.ok(!create.includes('название от 2 символов'), 'пояснение про длину названия убрано');
+  assert.ok(!create.includes('hint'), 'в карточке создания дисциплины нет пояснительных абзацев');
+});
+
 test('мои темы: в таблице занятий нет колонки Анкет, дата по центру', () => {
   const portal = read('public/js/portal.js');
   const dash = read('public/css/dashboard.css');
@@ -542,7 +567,7 @@ test('мои темы: в таблице занятий нет колонки А
 test('мои темы: карточка дисциплины сворачивается по клику на названии', () => {
   const portal = read('public/js/portal.js');
   const dash = read('public/css/dashboard.css');
-  for (const needle of ['catalog-toggle', 'collapsedCards', 'toggleCollapsed', 'is-collapsed', 'aria-expanded', 'aria-controls']) {
+  for (const needle of ['catalog-toggle', 'expandedCards', 'toggleExpanded', 'is-collapsed', 'aria-expanded', 'aria-controls']) {
     assert.ok(portal.includes(needle), `в карточке дисциплины нет ${needle}`);
   }
   assert.ok(!portal.includes('localStorage') && !portal.includes('sessionStorage'), 'состояние сворачивания нигде не сохраняется');

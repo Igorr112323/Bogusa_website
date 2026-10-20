@@ -776,10 +776,6 @@ table.table {
   border-top: none;
 }
 
-.catalog-form > .hint {
-  margin: var(--space-2) 0 0;
-}
-
 .table .row-off td {
   color: var(--text-muted);
 }

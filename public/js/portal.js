@@ -553,14 +553,15 @@ const MAX_TITLE = 200;
 let focusTopicFor = null;
 
 /**
- * Свёрнутые карточки дисциплин. По умолчанию всё открыто; состояние живёт до
- * перезагрузки страницы - в хранилище браузера кабинет ничего не пишет.
+ * Раскрытые карточки дисциплин. По умолчанию список свёрнут и преподаватель сам
+ * раскрывает нужную дисциплину; состояние живёт до перезагрузки страницы, в
+ * хранилище браузера кабинет ничего не пишет.
  */
-const collapsedCards = new Set();
+const expandedCards = new Set();
 
-function toggleCollapsed(disciplineId) {
-  if (collapsedCards.has(disciplineId)) collapsedCards.delete(disciplineId);
-  else collapsedCards.add(disciplineId);
+function toggleExpanded(disciplineId) {
+  if (expandedCards.has(disciplineId)) expandedCards.delete(disciplineId);
+  else expandedCards.add(disciplineId);
   renderCatalog();
 }
 
@@ -588,7 +589,9 @@ function createDisciplineCard() {
         if (value.length < 2) return toast('Название дисциплины: минимум 2 символа', 'danger');
         setLoading(submit, true, 'Создаём…');
         try {
-          await api.post('/api/teacher/disciplines', { title: value });
+          const result = await api.post('/api/teacher/disciplines', { title: value });
+          const createdId = result.discipline?.id;
+          if (Number.isInteger(createdId)) expandedCards.add(createdId);
           toast('Дисциплина создана', 'ok');
           title.value = '';
           await afterCatalogChange();
@@ -609,10 +612,7 @@ function createDisciplineCard() {
   });
 
   return el('div', { class: 'card card-tight' }, [
-    el('div', { class: 'catalog-form-head' }, [
-      el('h3', { text: 'Новая дисциплина' }),
-      el('span', { class: 'tiny muted', text: 'название от 2 символов' }),
-    ]),
+    el('div', { class: 'catalog-form-head' }, [el('h3', { text: 'Новая дисциплина' })]),
     el('div', { class: 'catalog-add' }, [
       fieldRow('Название дисциплины', title, 'new-discipline-title'),
       fieldRow(null, submit),
@@ -629,7 +629,7 @@ async function afterCatalogChange() {
   }
   await renderCatalog();
   window.scrollTo(0, scrollY);
-  if (focusTopicFor !== null && collapsedCards.has(focusTopicFor)) focusTopicFor = null;
+  if (focusTopicFor !== null && !expandedCards.has(focusTopicFor)) focusTopicFor = null;
   if (focusTopicFor !== null) {
     const node = document.querySelector(`#topic-title-${focusTopicFor}`);
     focusTopicFor = null;
@@ -767,28 +767,19 @@ function topicAddForm(discipline) {
   date.addEventListener('keydown', onEnter);
 
   return el('div', { class: 'catalog-form' }, [
-    el('div', { class: 'catalog-form-head' }, [
-      el('h3', { text: 'Добавить занятие' }),
-      el('span', { class: 'tiny muted', text: 'Enter тоже добавляет' }),
-    ]),
+    el('div', { class: 'catalog-form-head' }, [el('h3', { text: 'Добавить занятие' })]),
     el('div', { class: 'catalog-add' }, [
       fieldRow('Название занятия', title, `topic-title-${discipline.id}`),
       fieldRow('Дата занятия', date, `topic-date-${discipline.id}`),
       fieldRow(null, submit),
     ]),
-    el('p', { class: 'hint', text: 'Дату можно не ставить - тогда занятие попадёт в конец списка.' }),
   ]);
 }
 
 /** Список занятий дисциплины: дата, число ответов и переходы. */
 function topicsTable(discipline) {
   const topics = discipline.topics || [];
-  if (topics.length === 0) {
-    return el('p', {
-      class: 'hint',
-      text: 'Занятий пока нет. Добавьте первое в блоке ниже - и по нему можно будет принимать анкету по занятию.',
-    });
-  }
+  if (topics.length === 0) return null;
 
   return el('div', { class: 'table-wrap' }, [
     el('table', { class: 'table' }, [
@@ -830,12 +821,6 @@ function topicsTable(discipline) {
                 }),
                 el('button', {
                   class: 'btn btn-sm btn-ghost',
-                  text: 'Ссылка',
-                  attrs: { type: 'button' },
-                  on: { click: () => modalLink(discipline.id, topic.id, 'lesson') },
-                }),
-                el('button', {
-                  class: 'btn btn-sm btn-ghost',
                   text: 'Править',
                   attrs: { type: 'button' },
                   on: { click: () => editTopic(topic) },
@@ -859,7 +844,7 @@ function disciplineCard(discipline) {
   const topics = discipline.topics || [];
   const activeTopics = topics.filter((t) => t.is_active).length;
   const answered = topics.reduce((acc, t) => acc + (t.responses ?? 0), 0);
-  const collapsed = collapsedCards.has(discipline.id);
+  const collapsed = !expandedCards.has(discipline.id);
   const bodyId = `catalog-body-${discipline.id}`;
 
   return el('section', { class: 'section' }, [
@@ -874,7 +859,7 @@ function disciplineCard(discipline) {
               'aria-controls': bodyId,
               title: collapsed ? 'Развернуть список занятий' : 'Свернуть список занятий',
             },
-            on: { click: () => toggleCollapsed(discipline.id) },
+            on: { click: () => toggleExpanded(discipline.id) },
           }, [
             el('span', { class: 'caret' }),
             el('span', { class: 'catalog-title', text: discipline.title }),
@@ -948,7 +933,8 @@ async function renderCatalog() {
         }),
       ]),
       createDisciplineCard(),
-      ...state.disciplines.map(disciplineCard),
+      // новые дисциплины - вверху списка, порядок внутри не важнее этого
+      ...[...state.disciplines].sort((a, b) => b.id - a.id).map(disciplineCard),
     ]);
   } catch (error) {
     setAlert(error.message, 'danger');
