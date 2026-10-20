@@ -229,6 +229,12 @@ else
 fi
 set_env ADMIN_LOGIN admin
 set_env ADMIN_PASSWORD "$ADMIN_PASSWORD"
+# DEMO_TEACHER_PASSWORD из .env.example напечатан в публичном репозитории - убираем,
+# чтобы `npm run seed -- --demo` на сервере не создал преподавателя с известным паролем
+if grep -q '^DEMO_TEACHER_PASSWORD=' "$ENV_FILE"; then
+  sed -i 's/^DEMO_TEACHER_PASSWORD=/#DEMO_TEACHER_PASSWORD=/' "$ENV_FILE"
+  note "DEMO_TEACHER_PASSWORD закомментирован: seed сгенерирует свой и напечатает его один раз"
+fi
 set_env MIN_ANSWERS_TO_SHOW "${MIN_ANSWERS_TO_SHOW:-5}"
 set_env FRAME_ANCESTORS "${FRAME_ANCESTORS:-'self'}"
 set_env DATA_DIR "$APP_DIR/data"

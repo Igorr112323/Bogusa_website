@@ -156,6 +156,7 @@ test('DRY_RUN реально готовит .env, unit-файл и конфиг 
   assert.match(env, /^ADMIN_LOGIN=admin$/m);
   assert.doesNotMatch(env, /^ADMIN_PASSWORD=\s*$/m, 'пароль администратора обязан быть задан');
   assert.match(env, /^JWT_SECRET=[A-Za-z0-9_-]{40,}$/m);
+  assert.match(env, /^#DEMO_TEACHER_PASSWORD=/m, 'демо-пароль из публичного .env.example должен быть выключен');
   assert.match(env, /^DB_FILE=/m);
 
   const unit = read(path.join(tmp, 'etc', 'systemd', 'system', 'feedback.service'));
