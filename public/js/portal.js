@@ -364,23 +364,21 @@ function studentLink(disciplineId, topicId, formType) {
 function linkRow(disciplineId, topicId, formType) {
   const url = studentLink(disciplineId, topicId, formType);
   const input = el('input', { class: 'input', attrs: { value: url, readonly: true, 'aria-label': 'Ссылка на анкету' } });
-  return el('div', { class: 'card' }, [
-    el('div', { class: 'copy-row' }, [
-      input,
-      el('button', {
-        class: 'btn btn-sm btn-ghost',
-        text: 'Скопировать',
-        attrs: { type: 'button' },
-        on: {
-          click: async (event) => {
-            const ok = await copyText(url);
-            toast(ok ? 'Ссылка скопирована' : 'Не удалось скопировать', ok ? 'ok' : 'danger');
-            event.target.blur();
-          },
+  return el('div', { class: 'copy-row' }, [
+    input,
+    el('button', {
+      class: 'btn btn-sm btn-ghost',
+      text: 'Скопировать',
+      attrs: { type: 'button' },
+      on: {
+        click: async (event) => {
+          const ok = await copyText(url);
+          toast(ok ? 'Ссылка скопирована' : 'Не удалось скопировать', ok ? 'ok' : 'danger');
+          event.target.blur();
         },
-      }),
-      el('a', { class: 'btn btn-sm btn-ghost', attrs: { href: url, target: '_blank', rel: 'noopener' }, text: 'Открыть' }),
-    ]),
+      },
+    }),
+    el('a', { class: 'btn btn-sm btn-ghost', attrs: { href: url, target: '_blank', rel: 'noopener' }, text: 'Открыть' }),
   ]);
 }
 
