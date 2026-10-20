@@ -222,8 +222,14 @@ test('публикация панелей - по явному флагу, по �
   assert.match(s, /if \[ "\$PUBLISH_PANELS" = "keep" \]; then[\s\S]{0,260}grep -q "listen \$\{PUBLISH_PANELS_PORT\};"/);
   assert.match(s, /PUBLISH_PANELS_PORT="\$\{PUBLISH_PANELS_PORT:-8080\}"/);
   assert.match(s, /for panel_port in "\$\{PUBLISH_PANELS_PORT\}" "\$\{ADMIN_PUBLISH_PORT\}"; do/);
-  assert.match(s, /sys ufw --force allow "\$\{panel_port\}\/tcp"/);
-  assert.match(s, /sys ufw delete allow "\$\{panel_port\}\/tcp"/, 'запуск без флага закрывает порт обратно');
+  assert.match(s, /sys ufw allow "\$\{panel_port\}\/tcp"/);
+  assert.match(s, /sys ufw --force delete allow "\$\{panel_port\}\/tcp"/, 'запуск без флага закрывает порт обратно');
+  // ufw 0.36.2: "ufw --force allow ..." читается как "default allow" и падает
+  // с "Invalid syntax" - с --force можно только enable/reset/delete
+  const codeOnly = s.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  assert.ok(!/--force (allow|deny|reject)\b/.test(codeOnly), 'ufw не принимает --force у allow/deny/reject');
+  assert.ok(!/sys ufw delete (?!allow)/.test(s), 'delete только в форме delete allow');
+  assert.match(s, /не прошла команда: \$\*/, 'sys() печатает саму команду, а не "$@"');
   assert.match(s, /listen \[::\]:\$\{panel_port\};/, 'nginx слушает оба порта публикации');
   assert.match(s, /location \^~ \/admin\/ \{ return 404; \}/, 'на порту преподавателя админки быть не должно');
   assert.match(s, /location \^~ \/portal\/ \{ return 404; \}/, 'на порту админки кабинета преподавателя быть не должно');

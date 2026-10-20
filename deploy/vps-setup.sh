@@ -67,7 +67,8 @@ sys() {
   if [ "$DRY_RUN" = "1" ]; then
     printf '   (dry-run) %s\n' "$*"
   else
-    "$@"
+    # при ошибке печатаем саму команду, а не "$@" из ловушки ERR
+    "$@" || { rc=$?; echo "   не прошла команда: $* (код $rc)"; exit "$rc"; }
   fi
 }
 p() { printf '%s%s' "$ROOT_PREFIX" "$1"; }   # путь с префиксом: в dry-run всё уходит в /tmp
@@ -168,9 +169,12 @@ sys ufw allow 80
 sys ufw allow 443
 for panel_port in "${PUBLISH_PANELS_PORT}" "${ADMIN_PUBLISH_PORT}"; do
   if [ "$PUBLISH_PANELS" = "1" ]; then
-    sys ufw --force allow "${panel_port}/tcp"
+    # "ufw --force allow ..." на ufw 0.36.2 падает: из-за --force разборщик читает
+    # allow как команду "default" и отвечает "Invalid syntax". allow вопросов не
+    # задаёт, --force ему не нужен; проверено по исходнику ufw/parser.py.
+    sys ufw allow "${panel_port}/tcp"
   elif ufw status 2>/dev/null | grep -qE "^${panel_port}(/tcp)? +ALLOW IN"; then
-    sys ufw delete allow "${panel_port}/tcp"   # публиковали раньше - закрываем обратно
+    sys ufw --force delete allow "${panel_port}/tcp"   # публиковали раньше - закрываем обратно
   fi
 done
 if [ "$PUBLISH_PANELS" = "1" ]; then
