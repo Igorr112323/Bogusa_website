@@ -37,7 +37,7 @@
 - [API](#api)
 - [Безопасность и приватность](#безопасность-и-приватность)
 - [Тесты](#тесты)
-- [Развёртывание на сервере](#развёртывание-на-сервере)
+- [Развёртывание на сервере](#развёртывание-на-сервере) - есть скрипт `deploy/vps-setup.sh`, который настраивает Ubuntu-сервер целиком
 - [Как поменять формулировки вопросов](#как-поменять-формулировки-вопросов)
 - [Частые вопросы и решения проблем](#частые-вопросы-и-решения-проблем)
 
@@ -692,11 +692,19 @@ npm test
 Минимальная настройка самой машины перед запуском:
 
 ```bash
+export DEBIAN_FRONTEND=noninteractive              # apt не будет спрашивать про конфиги
 adduser deploy && usermod -aG sudo deploy          # не работать под root
-ufw allow OpenSSH && ufw allow 80 && ufw allow 443 && ufw enable   # 3000/3001 не открываем
-apt install -y nginx sqlite3 fail2ban unattended-upgrades
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs
+apt-get install -y -o Dpkg::Options::=--force-confold nginx sqlite3 fail2ban unattended-upgrades
+ufw --force allow OpenSSH && ufw --force allow 80 && ufw --force allow 443
+ufw --force enable                                 # 3000/3001 не открываем; --force - без вопроса "y"
+printf '[sshd]\nenabled = true\nmaxretry = 5\nbantime = 1h\n' > /etc/fail2ban/jail.local
+systemctl enable --now fail2ban && mkdir -p /run/sshd     # без /run/sshd рестарт sshd падает
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y nodejs
 ```
+
+Команды вставляют по одной: `ufw enable` без `--force` ждёт ответ `y`, а вставленный блок строк
+уезжает именно в этот вопрос - тогда и фаервол остаётся выключенным, и следующая команда
+не выполняется. Отвечать на вопросы нужно на латинской раскладке (`y`, а не `т`).
 
 Обязательные проверки перед открытием доступа студентам:
 
@@ -708,12 +716,80 @@ curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y node
   nginx для панелей, либо доступ по VPN/через SSH-туннель;
 - `npm test` и `npm run secaudit -- --student https://домен --staff https://домен-панелей` - оценки и
   находки относятся именно к вашему публичному развёртыванию;
-- бэкап базы по cron (в crontab знак `%` экранируют: `\%F`):
+- бэкап базы по cron - готовый `deploy/backup.sh` (копия через `sqlite3 ".backup"`, проверка
+  целостности, 14 копий) или строка вручную; в crontab знак `%` экранируют: `\%F`:
 
 ```bash
 0 3 * * * deploy sqlite3 /opt/bogusa-feedback/data/feedback.sqlite ".backup /var/backups/feedback-$(date +\%F).sqlite" \
   && find /var/backups -name 'feedback-*.sqlite' -mtime +14 -delete
 ```
+
+### Самый короткий путь: скрипт `deploy/vps-setup.sh`
+
+Он делает всё из двух предыдущих блоков сам и **ни о чём не спрашивает**: фаервол, fail2ban,
+Node.js 22, `.env`, база, служба systemd, nginx и ежедневный бэкап. Рассчитан на чистый
+Ubuntu 22.04/24.04, где вы уже сидите в SSH под `root` (в окне SSH, а не в PowerShell).
+
+```bash
+git clone https://github.com/ВАШ_ЛОГИН/Bogusa_website.git /opt/feedback
+cd /opt/feedback
+bash deploy/vps-setup.sh
+```
+
+Шаги те же, что в нумерации вывода скрипта:
+
+1. `apt-get install` с `DEBIAN_FRONTEND=noninteractive` и `--force-confold` - тот самый фиолетовый
+   экран про `sshd_config` не появится; `unattended-upgrades` включаются вместе с ним.
+2. Node.js 22 из NodeSource; если стоит 22 или новее - не трогает.
+3. `ufw --force allow OpenSSH/80/443` и `ufw --force enable`; `3000`/`3001` наружу не открываются.
+4. `/etc/fail2ban/jail.local` (`maxretry = 5`, `bantime = 1h`) плюс `systemctl enable --now fail2ban`,
+   поэтому `fail2ban-client status sshd` отвечает с первого раза.
+5. SSH: если в `/root/.ssh/authorized_keys` есть ключ - пишется
+   `/etc/ssh/sshd_config.d/00-hardening.conf` (`PasswordAuthentication no`,
+   `PermitRootLogin prohibit-password`), конфиг проверяется `sshd -t` и только потом `ssh`
+   перезапускается. Ключей нет - пароль не отключается, без доступа не останетесь. Файл именно
+   `00-`, а не `99-`: sshd берёт первое встреченное значение, а в образе провайдера уже стоит
+   `PasswordAuthentication yes` в `50-cloud-init.conf`.
+6. `npm install --omit=dev`.
+7. `.env` создаётся из `.env.example` **только если его ещё нет**: `NODE_ENV=production`,
+   `PUBLIC_BASE_URL` и `ALLOWED_HOSTS` (домен или IP - иначе ссылки и QR-код ведут на `localhost`),
+   `COOKIE_SECURE`, `TRUST_PROXY_HOPS=1`, `JWT_SECRET`, `ADMIN_LOGIN`/`ADMIN_PASSWORD`, пути к базе.
+   Секрет и пароль при повторном запуске не перебиваются - сессии не слетают.
+8. `npm run seed`, если база пустая (иначе пропуск - анкеты не трогаются), `npm test`,
+   unit-файл `deploy/feedback.service` (обычный `node server/index.js`, `Restart=always`, без pm2)
+   и конфиг nginx с `proxy_set_header Host $host`. С `DOMAIN` добавляется certbot, и после выдачи
+   сертификата скрипт сам ставит `COOKIE_SECURE=true` и `PUBLIC_BASE_URL=https://...`.
+9. `deploy/backup.sh` в `/usr/local/bin/feedback-backup` и `/etc/cron.d/feedback-backup`
+   (03:00, 14 копий, каждая проверяется `PRAGMA integrity_check`).
+
+Режимы запуска:
+
+```bash
+DRY_RUN=1 bash deploy/vps-setup.sh                      # ничего не менять: показать план,
+                                                        # а файлы подготовить в /tmp/feedback-dryroot
+DOMAIN=feedback.uni.ru ADMIN_EMAIL=me@uni.ru bash deploy/vps-setup.sh   # домен + Let's Encrypt
+STAFF_DOMAIN=feedback-uni.ru bash deploy/vps-setup.sh    # вход и панели на своём домене
+STAFF_ALLOW_CIDRS=10.0.0.0/8 bash deploy/vps-setup.sh    # ...и только из подсети вуза
+SKIP_TESTS=1 bash deploy/vps-setup.sh                    # без прогона автотестов
+SSH_KEY_ONLY=off bash deploy/vps-setup.sh                 # не трогать вход по паролю
+TIMEZONE=Europe/Moscow bash deploy/vps-setup.sh           # часовой пояс для логов и бэкапов
+```
+
+Что делать сразу после:
+
+```bash
+cat /opt/feedback/.deploy-admin-password    # пароль администратора (файл в .gitignore)
+systemctl status feedback --no-pager        # сервис поднят
+journalctl -u feedback -n 50 --no-pager     # его логи, если что-то не отвечает
+curl -sI http://localhost | head -3         # nginx отвечает
+npm run secaudit -- --student http://localhost --staff http://127.0.0.1:3001
+```
+
+Порт `3001` (вход и панели) наружу закрыт - это намеренно. Их смотрят со своего компьютера по
+туннелю: `ssh -L 3001:localhost:3001 root@IP-адрес`, затем в браузере `http://localhost:3001/login`.
+Повторный запуск безопасен: `.env`, пароль и база остаются как были, а обновление версии - это
+`cd /opt/feedback && git pull && bash deploy/vps-setup.sh`. Настроенную вручную машину сначала
+проверьте режимом `DRY_RUN=1`: скрипт не отключает и не перезаписывает то, чего не создавал.
 
 ### Вариант 1: systemd + nginx
 

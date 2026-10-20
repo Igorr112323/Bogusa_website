@@ -1,0 +1,46 @@
+# Служба «Анонимная обратная связь»: обычный запуск через `node server/index.js`,
+# без pm2 и без сборщиков. deploy/vps-setup.sh подставляет вместо __APP_DIR__ путь
+# к репозиторию, вместо __OWNER__ - пользователя (feedback или root) и кладёт файл
+# в /etc/systemd/system/feedback.service.
+#
+# Правки, которые нужно вносить сюда, а не в аргументы командной строки:
+#   PORT / STAFF_PORT   стоят в .env, сервер читает их сам
+#   логика перезапуска   Restart/RestartSec ниже
+#
+[Unit]
+Description=Anonymous student feedback service (student + staff ports)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__OWNER__
+Group=__OWNER__
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/env node server/index.js
+EnvironmentFile=__APP_DIR__/.env
+
+# упал - поднимется сам; частые рестарты не должны разгоняться
+Restart=always
+RestartSec=5
+
+# если служба зависнет, systemd снимет её по SIGTERM, а через 30 с добьёт
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# файлы, созданные службой, не должны наследировать права целиком
+Umask=0027
+
+# доступ только к своему каталогу данных ( ProtectSystem=full: /usr, /boot, /etc только на чтение)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=__APP_DIR__/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=feedback
+
+[Install]
+WantedBy=multi-user.target

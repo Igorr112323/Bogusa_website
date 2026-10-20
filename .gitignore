@@ -17,3 +17,6 @@ npm-debug.log*
 .DS_Store
 tmp/
 coverage/
+
+# Пароль администратора, который создаёт deploy/vps-setup.sh (не для репозитория)
+.deploy-admin-password
