@@ -257,8 +257,8 @@ async function checkAccess() {
   else ok('cors', 'чужой Origin не получает доступ', 'заголовков CORS нет');
 
   const reflected = await head(`${STUDENT}/api/meta`, { headers: { Host: 'evil.example' } });
-  if (reflected.status === 200 && reflected.body.includes('evil.example')) add('HIGH', 'host', 'Host header инжектится в ссылки и QR', reflected.body.slice(0, 160), 'задать PUBLIC_URL в .env или доверять только локальным/частным хостам');
-  else ok('host', 'подставной Host не попадает в ссылки', 'используется PUBLIC_URL или проверенный хост');
+  if (reflected.status === 200 && reflected.body.includes('evil.example')) add('HIGH', 'host', 'Host header инжектится в ссылки и QR', reflected.body.slice(0, 160), 'задать PUBLIC_BASE_URL в .env или доверять только локальным/частным хостам');
+  else ok('host', 'подставной Host не попадает в ссылки', 'используется PUBLIC_BASE_URL или проверенный хост');
 
   const injection = await head(`${STAFF}/login?next=${encodeURIComponent('//evil.example')}`);
   const location = injection.headers.get('location') || '';
